@@ -139,7 +139,7 @@ Django REST API with modules for:
 ### Email Alert Example:
 ![Email Screenshot 1]([docs/email_alert.png](https://github.com/Akhil70722/classification_sentiment_digital_news/blob/b4745de58288829d393eee4479b5ce29507a525e/email1.jpg))
 
-![Email Screenshot 2]()
+![Email Screenshot 2](https://github.com/Akhil70722/classification_sentiment_digital_news/blob/a1ac4a2256964786629d4fd54572d42638be5419/email2.jpg)
 
 ## 📊 Evaluation Parameters
 
