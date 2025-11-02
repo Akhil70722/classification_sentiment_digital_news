@@ -12,34 +12,46 @@ This project is an end-to-end automated pipeline that:
 ### 🔍 Sources:
 - Times of India
 - The Hindu
-- News18
+- News18 (English & Punjabi)
 - Dainik Bhaskar
+- AajTak
+- India Today
+- India TV
+- Jagran
+- Tribune
+- Hindustan Times
+- Indian Express
+- And more regional news portals
 
 ### 🛠️ Crawling Tools:
-- **Selenium**: For dynamic JavaScript content.
+- **Selenium**: For dynamic JavaScript content and video news extraction.
 - **BeautifulSoup**: For static HTML parsing.
 - **Scheduler**: Custom Python scripts using `schedule` and `threading`.
+- **MoviePy**: For video processing and audio extraction.
+- **SpeechRecognition API**: For Hindi-to-English transcription from video news.
 
 ### 📄 Data Fields Extracted:
 - Headline
 - Full article text
 - Publish date
 - News source
+- Video transcription (for video news)
 
 ## 🧾 Dataset Description
-- Language: Primarily English.
-- Format: Text-based articles.
-- Future Scope: Include Hindi, Hinglish (code-mixed), and transcribed audio/video content.
+- Language: Primarily English, with Hindi video news transcription support.
+- Format: Text-based articles and transcribed video content.
+- Video Processing: Automated extraction and transcription of video news using Selenium, MoviePy, and SpeechRecognition API with Google Translate integration.
 
 ## ⚙️ Description of Work Done
 The full pipeline includes:
 - Web Crawling using Selenium + BeautifulSoup
+- Video News Processing using Selenium, MoviePy, and SpeechRecognition API
 - Text Processing using SpaCy, NLTK, TF-IDF, SBERT
 - Clustering & Classification using K-Means, HDBSCAN, DistilBERT
 - Sentiment Analysis with RoBERTa and TextBlob
 - Frontend using Next.js + Tailwind CSS
 - Backend using Django REST Framework
-- Alert System using Gmail SMTP + Nodemailer
+- Alert System using Gmail SMTP
 
 ## 🧹 Data Preprocessing
 - Lowercasing
@@ -63,12 +75,13 @@ The full pipeline includes:
 | Task                | Tools & Techniques                |
 |---------------------|-----------------------------------|
 | Web Crawling        | Selenium + BeautifulSoup          |
+| Video Processing    | Selenium, MoviePy, SpeechRecognition|
 | Preprocessing       | SpaCy, NLTK                       |
 | Vectorization       | TF-IDF, SBERT                     |
 | Clustering          | K-Means, HDBSCAN                  |
 | Classification      | DistilBERT (Fine-tuned)           |
 | Sentiment Analysis  | RoBERTa, TextBlob                 |
-| Email Alerts        | Nodemailer + Gmail SMTP           |
+| Email Alerts        | Gmail SMTP                        |
 | Frontend Development| Next.js + Tailwind CSS            |
 | Backend Integration | Django REST Framework             |
 
@@ -95,7 +108,7 @@ The full pipeline includes:
 
 ## 😡 Sentiment Analysis
 
-- **Models:** RoBERTa (fine-tuned), TextBlob (baseline)
+- **Models:** RoBERTa (CardiffNLP twitter-roberta-base-sentiment), TextBlob (baseline)
 - **Classes:** Positive, Neutral, Negative
 - **Alert Trigger:** Negative news → Email alert
 
@@ -105,7 +118,7 @@ The full pipeline includes:
 News → Classified → Sentiment → Email
 
 ### Email Tech:
-Nodemailer + Gmail SMTP
+Gmail SMTP (Python smtplib)
 
 ### Email Content:
 - Headline
@@ -158,6 +171,7 @@ Django REST API with modules for:
 - Achieved high classification accuracy.
 - Timely email alerts for negative news articles.
 - Web interface allows live news exploration and user feedback.
+- Video news processing and transcription pipeline implemented.
 
 ## 🚀 Future Enhancements
 - Integration with social media (Twitter, Facebook)
@@ -166,4 +180,4 @@ Django REST API with modules for:
 - Fake news detection module
 - Android/iOS app for field use
 - Voice-controlled admin panel
-
+- Enhanced multilingual support (Hinglish, regional languages)
