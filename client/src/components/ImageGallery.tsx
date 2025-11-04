@@ -17,33 +17,40 @@ const ImageGallery = () => {
 
   //These are custom properties for zoom effect while slide-show
    const zoomInProperties = {
-    scale: 1.3,
+    scale: 1.1,
     duration: 4000, // Change this to 4000ms for 4 seconds per slide
     transitionDuration: 300,
     infinite: true,
     prevArrow: (
-      <div className="ml-10 top-40 md:top-72">
-        <ArrowLeftIcon className="h-8 w-8 text-white cursor-pointer" />
+      <div className="ml-8 top-1/2 transform -translate-y-1/2 z-10 bg-black/30 hover:bg-black/50 rounded-full p-2 transition-colors">
+        <ArrowLeftIcon className="h-6 w-6 text-white cursor-pointer" />
       </div>
     ),
     nextArrow: (
-      <div className="mr-10 top-40 md:top-72">
-        <ArrowRightIcon className="h-8 w-8 text-white cursor-pointer" />
+      <div className="mr-8 top-1/2 transform -translate-y-1/2 z-10 bg-black/30 hover:bg-black/50 rounded-full p-2 transition-colors">
+        <ArrowRightIcon className="h-6 w-6 text-white cursor-pointer" />
       </div>
     ),
   };
   return (
-    <div className="w-full h-[90vh]">
+    <div className="w-full h-[90vh] relative overflow-hidden">
       <Zoom {...zoomInProperties}>
         {images.map((each, index) => (
           <div
             key={index}
-            className="flex justify-center md:items-center items-start w-screen h-[70vh] relative bg-black"
+            className="flex justify-center items-center w-full h-[90vh] relative"
           >
-            <img className="w-full h-full object-contain mx-auto my-auto" src={each} alt={'Slide ${index}'}/>
-            {/* <p className="absolute md:top-80 top-40 inset-x-1/4 text-center z-10 md:text-2xl text-3xl bold text-white font-bold uppercase">
+            <img 
+              className="w-full h-full object-cover" 
+              src={each} 
+              alt={`Slide ${index}`}
+            />
+            {/* Optional: Overlay text */}
+            {/* <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+              <p className="text-white text-4xl md:text-6xl font-bold uppercase text-center px-4">
                 Welcome To News Analysis
-            </p> */}
+              </p>
+            </div> */}
           </div>
         ))}
       </Zoom>

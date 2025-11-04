@@ -480,11 +480,13 @@
 
 from django.shortcuts import render
 from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 import threading
 import feedparser
 import xlsxwriter
 import pandas as pd
 import re
+import os
 import contractions
 import spacy
 from newspaper import Article
@@ -555,7 +557,7 @@ DEPARTMENT_MAPPING = {
 
 # ─────── EMAIL CONFIG ───────
 EMAIL_CONFIG = {
-    'sender_email': 'lakshsharma16052004',  # Replace with your email
+    'sender_email': 'akhil.mate22@vit.edu',  # Replace with your email
     'sender_password': 'bhsq enex bzah rouw',        # Replace with your password
     'smtp_server': 'smtp.gmail.com',          # Change if using different provider
     'smtp_port': 587
@@ -567,22 +569,65 @@ stopwords = set(__import__('nltk').corpus.stopwords.words('english')) - {'not'}
 
 # Sentiment: CardiffNLP Twitter-RoBERTa
 sent_tok = AutoTokenizer.from_pretrained("tokenizer_roberta/sentiment_tokenizer/")
-sent_model = AutoModelForSequenceClassification.from_pretrained("cardiffnlp/twitter-roberta-base-sentiment/")
+# Load model from Hugging Face Hub (will download and cache automatically)
+try:
+    sent_model = AutoModelForSequenceClassification.from_pretrained(
+        "cardiffnlp/twitter-roberta-base-sentiment"
+    )
+except Exception as e:
+    print(f"Error loading sentiment model: {e}")
+    print("Attempting to download from Hugging Face Hub...")
+    # Force download by clearing any incomplete cache
+    import shutil
+    cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+    if os.path.exists(cache_dir):
+        model_cache_path = None
+        # Try to find the model in cache and remove if incomplete
+        for root, dirs, files in os.walk(cache_dir):
+            if "twitter-roberta-base-sentiment" in root:
+                model_files = ['pytorch_model.bin', 'model.safetensors']
+                has_model = any(f in files for f in model_files)
+                if not has_model:
+                    model_cache_path = root
+                    break
+        if model_cache_path:
+            try:
+                shutil.rmtree(model_cache_path)
+                print(f"Removed incomplete cache: {model_cache_path}")
+            except:
+                pass
+    # Retry loading
+    sent_model = AutoModelForSequenceClassification.from_pretrained(
+        "cardiffnlp/twitter-roberta-base-sentiment",
+        force_download=False
+    )
 _label_map = {'negative':1,'neutral':2,'positive':0}
 
 # Category: DistilBERT
-custom_objects = {'TFDistilBertModel': TFDistilBertModel}
-cls_model = tf.keras.models.load_model(
-    "distilbert_model.h5",
-    custom_objects=custom_objects
-)
-cls_tok = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+cls_model = None
+cls_tok = None
 _max_len = 512
 _categories = {
     0:"Entertainment",1:"Business",2:"Politics",3:"Judiciary",
     4:"Crime",5:"Culture",6:"Sports",7:"Science",
     8:"International",9:"Technology"
 }
+
+# Lazy load category model if file exists
+def _load_category_model():
+    global cls_model, cls_tok
+    if cls_model is None and os.path.exists("distilbert_model.h5"):
+        try:
+            custom_objects = {'TFDistilBertModel': TFDistilBertModel}
+            cls_model = tf.keras.models.load_model(
+                "distilbert_model.h5",
+                custom_objects=custom_objects
+            )
+            cls_tok = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+        except Exception as e:
+            print(f"Warning: Could not load category model: {e}")
+            cls_model = False  # Mark as failed
+            cls_tok = False
 
 # Emotion: DistilBERT-based emotion classifier
 emotion_model = pipeline(
@@ -611,15 +656,23 @@ def predict_sentiment(text):
     ]
 
 def predict_category(text):
-    inp = cls_tok(
-        text,
-        return_tensors='tf',
-        truncation=True,
-        padding='max_length',
-        max_length=_max_len
-    )
-    preds = cls_model.predict([inp['input_ids'], inp['attention_mask']])[0]
-    return int(preds.argmax())
+    _load_category_model()
+    if cls_model is None or cls_model is False or cls_tok is None or cls_tok is False:
+        # Fallback: return a default category ID if model not available
+        return 0  # Default to first category (Entertainment)
+    try:
+        inp = cls_tok(
+            text,
+            return_tensors='tf',
+            truncation=True,
+            padding='max_length',
+            max_length=_max_len
+        )
+        preds = cls_model.predict([inp['input_ids'], inp['attention_mask']])[0]
+        return int(preds.argmax())
+    except Exception as e:
+        print(f"Error predicting category: {e}")
+        return 0  # Default to first category
 
 def predict_emotion(text):
     return emotion_model(text[:1500])[0][0]['label']
@@ -649,7 +702,7 @@ def fetch_and_process(max_items=20, output_file='RSS_FullText.xlsx'):
     wb = xlsxwriter.Workbook(output_file)
     ws = wb.add_worksheet()
     ws.write_row(0, 0, [
-        'Source','Title','FullArticle','Link','Published'
+        'Source','Title','FullArticle','Link','Published','ImageURL'
     ])
     row = 1
 
@@ -669,19 +722,35 @@ def fetch_and_process(max_items=20, output_file='RSS_FullText.xlsx'):
 
             # download full article
             art = Article(link)
+            image_url = ''
             try:
                 art.download()
                 art.parse()
                 full = art.text
+                # Extract image from article
+                image_url = art.top_image or ''
             except:
-                continue
+                full = ''
+            
+            # Try to get image from RSS feed media content if article extraction failed
+            if not image_url:
+                media_content = entry.get('media_content', [])
+                if media_content:
+                    for media in media_content:
+                        if media.get('type', '').startswith('image/'):
+                            image_url = media.get('url', '')
+                            break
+                # Also check media_thumbnail
+                if not image_url and 'media_thumbnail' in entry:
+                    image_url = entry.get('media_thumbnail', [{}])[0].get('url', '') if isinstance(entry.get('media_thumbnail'), list) else entry.get('media_thumbnail', '')
 
             ws.write_row(row, 0, [
                 source,
                 entry.get('title',''),
                 full,
                 link,
-                entry.get('published','')
+                entry.get('published',''),
+                image_url  # Include image URL in Excel
             ])
             row += 1
             taken += 1
@@ -689,6 +758,7 @@ def fetch_and_process(max_items=20, output_file='RSS_FullText.xlsx'):
     wb.close()
 
 # ─────── DJANGO VIEW ───────
+@csrf_exempt
 def index(request):
     print("Session started")
 
@@ -728,6 +798,21 @@ def index(request):
                 'description': raw[:1000] + '...' if len(raw) > 1000 else raw
             })
 
+        # Try to extract image from article if not already in Excel
+        image_url = ''
+        try:
+            # Try to get image from RSS feed media content first
+            if 'ImageURL' in r and pd.notna(r['ImageURL']):
+                image_url = str(r['ImageURL'])
+            # If no image in Excel, try to extract from article URL
+            if not image_url or image_url == 'nan':
+                art = Article(r['Link'])
+                art.download()
+                art.parse()
+                image_url = art.top_image or ''
+        except:
+            image_url = ''
+        
         news.append({
             'Source': r['Source'],
             'Title': r['Title'],
@@ -738,6 +823,7 @@ def index(request):
             'Sentiment': sent,
             'Emotion': emo,
             'Department': dept,
+            'ImageURL': image_url,  # Add actual article image URL
         })
 
         # Prepare row for Excel
@@ -797,9 +883,136 @@ def index(request):
             else:
                 print(f"Failed to send alert about: {item['url']}")
 
-    print("Session ended")
+    print(f"Total news items processed: {len(news)}")
+    
+    # If no news was processed, return early with empty list
+    if len(news) == 0:
+        print("WARNING: No news items were processed!")
+        return JsonResponse(
+            {'result':'success','news':[], 'message':'No news items available'},
+            safe=False,
+            json_dumps_params={'ensure_ascii':False}
+        )
+    
+    # Handle POST request for category filtering BEFORE returning
+    if request.method == 'POST':
+        try:
+            import json
+            # Decode request body for Python 3
+            if not request.body:
+                print("POST request body is empty, returning all news")
+                return JsonResponse(
+                    {'result':'success','news':news},
+                    safe=False,
+                    json_dumps_params={'ensure_ascii':False}
+                )
+            
+            body_str = request.body.decode('utf-8')
+            print(f"POST request body: {body_str}")
+            
+            if not body_str.strip():
+                print("POST request body is empty after decode, returning all news")
+                return JsonResponse(
+                    {'result':'success','news':news},
+                    safe=False,
+                    json_dumps_params={'ensure_ascii':False}
+                )
+            
+            data = json.loads(body_str)
+            category_filter = data.get('category', None)
+            print(f"Category filter received: {category_filter}")
+            
+            if category_filter:
+                # Map frontend category names to backend category names
+                category_mapping = {
+                    'External Affairs': 'International',
+                    'Law and Justice': 'Judiciary',
+                    'Youth Affairs and Sports': 'Sports',
+                    'Finance': 'Business',
+                    'Internal Security': 'Crime',
+                    'Culture': 'Culture',
+                    'Information and Broadcasting': 'Entertainment',
+                    'Home Affairs': 'Crime',
+                    'Science and Technology': 'Science',
+                    'Electronics and Information Technology': 'Technology'
+                }
+                
+                backend_category = category_mapping.get(category_filter, category_filter)
+                print(f"Mapped category: {backend_category}")
+                print(f"Total news items: {len(news)}")
+                
+                # Get unique categories from news for debugging
+                unique_categories = list(set([item.get('Category') for item in news]))
+                print(f"Available categories in news: {unique_categories}")
+                
+                # Filter news by category (case-insensitive comparison)
+                filtered_news = [
+                    item for item in news 
+                    if item.get('Category') and 
+                    str(item.get('Category')).strip().lower() == str(backend_category).strip().lower()
+                ]
+                print(f"Filtered news items: {len(filtered_news)}")
+                
+                # If no matches found, try partial matching
+                if len(filtered_news) == 0:
+                    print(f"Trying partial match for category: {backend_category}")
+                    filtered_news = [
+                        item for item in news 
+                        if item.get('Category') and 
+                        str(backend_category).strip().lower() in str(item.get('Category')).strip().lower()
+                    ]
+                    print(f"Partial match results: {len(filtered_news)}")
+                
+                # If still no matches, try reverse partial matching
+                if len(filtered_news) == 0:
+                    print(f"Trying reverse partial match for category: {backend_category}")
+                    filtered_news = [
+                        item for item in news 
+                        if item.get('Category') and 
+                        str(item.get('Category')).strip().lower() in str(backend_category).strip().lower()
+                    ]
+                    print(f"Reverse partial match results: {len(filtered_news)}")
+                
+                print(f"Final filtered news count: {len(filtered_news)}")
+                if len(filtered_news) > 0:
+                    print(f"Sample filtered item category: {filtered_news[0].get('Category')}")
+                
+                return JsonResponse(
+                    {'result':'success','news':filtered_news, 'total':len(news), 'filtered':len(filtered_news)},
+                    safe=False,
+                    json_dumps_params={'ensure_ascii':False}
+                )
+            else:
+                print("No category filter provided in POST request, returning all news")
+                return JsonResponse(
+                    {'result':'success','news':news, 'total':len(news)},
+                    safe=False,
+                    json_dumps_params={'ensure_ascii':False}
+                )
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error: {e}")
+            print(f"Request body (raw): {request.body}")
+            import traceback
+            traceback.print_exc()
+            return JsonResponse(
+                {'result':'error','message':f'Invalid JSON: {str(e)}', 'news':[]},
+                safe=False
+            )
+        except Exception as e:
+            print(f"ERROR filtering by category: {e}")
+            import traceback
+            traceback.print_exc()
+            # Return all news as fallback on error
+            return JsonResponse(
+                {'result':'error','message':str(e), 'news':news, 'total':len(news)},
+                safe=False,
+                json_dumps_params={'ensure_ascii':False}
+            )
+    
+    # Default GET request returns all news
+    print(f"GET request: Returning all {len(news)} news items")
     return JsonResponse(
-        {'result':'success','news':news},
+        {'result':'success','news':news, 'total':len(news)},
         safe=False,
         json_dumps_params={'ensure_ascii':False}
     )

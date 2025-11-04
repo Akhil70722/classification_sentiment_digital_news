@@ -1,0 +1,35 @@
+# Node.js
+node_modules/
+client/node_modules/
+client/.next/
+.next/
+
+# Python venvs
+.venv/
+venv/
+server/.venv/
+
+# Python/Django
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+server/db.sqlite3
+
+# Env & local config
+.env
+*.local
+
+# Logs
+logs/
+*.log
+
+# Build outputs
+build/
+dist/
+
+# OS files
+.DS_Store
+Thumbs.db
+

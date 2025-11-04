@@ -1,35 +1,62 @@
 import React, { useState, useEffect } from "react";
 import Card from "../components/card";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
-import { Dropdown } from "flowbite-react";
 
-const LatestPosts = () => {
-  const [newsData, setNewsData] = useState([]);
+interface LatestPostsProps {
+  selectedCategory: string | null;
+}
+
+const LatestPosts: React.FC<LatestPostsProps> = ({ selectedCategory }) => {
+  const [newsData, setNewsData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // Fetch data from the backend
     const fetchData = async () => {
+      setIsLoading(true);
       try {
-        const response = await fetch("http://127.0.0.1:8000/");
-        const data = await response.json();
-
-        if (data && data.news) {
-          setNewsData(data.news);
+        let response;
+        
+        if (selectedCategory) {
+          // Make POST request with category filter
+          response = await fetch("http://127.0.0.1:8000/", {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ category: selectedCategory }),
+          });
         } else {
-          throw new Error("Invalid data format");
+          // Make GET request for all news
+          response = await fetch("http://127.0.0.1:8000/");
         }
-      } catch (err) {
-        setError(err.message);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Response data:', data);
+
+        if (data && data.news !== undefined) {
+          setNewsData(data.news);
+          console.log(`Loaded ${data.news.length} news items`);
+          if (data.news.length === 0 && selectedCategory) {
+            console.warn(`No news found for category: ${selectedCategory}`);
+          }
+        } else {
+          throw new Error(data?.message || "Invalid data format");
+        }
+      } catch (err: any) {
+        console.error('Error fetching news:', err);
+        setError(err?.message || 'Failed to fetch news');
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchData();
-  }, []);
+  }, [selectedCategory]);
 
   if (isLoading) {
     return <div className="flex justify-center items-center text-2xl">Loading...</div>;
@@ -40,54 +67,36 @@ const LatestPosts = () => {
   }
 
   return (
-    <>
-      <div className="mb-10">
-        <div className="flex justify-center items-center text-5xl m-6 mt-12">
-          LATEST ARTICLES
-        </div>
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-8">
         <div className="flex justify-center items-center mb-4">
-          Crawled more than {newsData.length}+{" "}
-          <span className="font-bold ml-1 mr-1 text-lg"> LIVE </span> news!
+          <h2 className="text-4xl font-bold text-gray-900">LATEST ARTICLES</h2>
         </div>
-        <div className="flex justify-center items-center">
-          <div className="flex justify-center items-center">
-            <input
-              style={{ width: 400, height: 50 }}
-              type="text"
-              className="input-text ml-4"
-              placeholder="Search Keywords..."
-            />
-            <FontAwesomeIcon
-              className="-ml-7 mt-1 hover:cursor-pointer"
-              icon={faMagnifyingGlass}
-            />
-            <div className="ml-3">
-              <Dropdown label="Top Keywords" className="text-black">
-                <div className="flex flex-col space-y-2">
-                  {/* Add dropdown items dynamically if needed */}
-                </div>
-              </Dropdown>
-            </div>
-          </div>
+        <div className="flex justify-center items-center mb-6">
+          <p className="text-gray-600 text-lg">
+            Crawled more than <span className="font-bold text-blue-600">{newsData.length}+</span>{" "}
+            <span className="font-bold">LIVE</span> news!
+          </p>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-7xl mx-auto">
         {newsData.map((news, index) => (
           <Card
             key={index}
-            imgUrl={news["Category"]}
+            imgUrl={news["ImageURL"] || news["Category"]}
             Title={news["Title"]}
-            description={news["Description"] || "No description available"}
+            description={news["Description"] || (typeof news["FullArticle"] === 'string' ? news["FullArticle"].substring(0, 200) : "No description available")}
             positive={Math.round(news["Sentiment"][0] * 100)}
             neutral={Math.round(news["Sentiment"][2] * 100)}
             negative={Math.round(news["Sentiment"][1] * 100)}
             time={news["Published"]}
             url={news["URL"]}
             updatedOn={news["Published"]}
+            category={news["Category"]}
           />
         ))}
       </div>
-    </>
+    </div>
   );
 };
 

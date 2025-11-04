@@ -12,6 +12,7 @@ interface CardProps {
   url: string;
   updatedOn: string;
   time: string;
+  category?: string;
 }
 
 const Card: React.FC<CardProps> = (props) => {
@@ -55,50 +56,70 @@ const Card: React.FC<CardProps> = (props) => {
     }
   }
   return (
-    <div className="flex justify-center items-center hover:scale-[1.01] duration-300 hover:cursor-pointer">
+    <div className="w-full">
       <div className={style.card}>
         <div className={style.card_header}>
-          <Image
-            src={`/categories/images/${props.imgUrl}.jpg`}
-            width={400}
-            height={200}
-            alt="Picture of the author"
-          />
+          {props.imgUrl && (props.imgUrl.startsWith('http://') || props.imgUrl.startsWith('https://')) ? (
+            <img
+              src={props.imgUrl}
+              width={400}
+              height={200}
+              alt={props.Title}
+              style={{ width: '100%', height: '180px', objectFit: 'cover' }}
+              onError={(e) => {
+                // Fallback to category image if article image fails to load
+                const fallbackCategory = props.category || props.imgUrl || 'default';
+                e.currentTarget.src = `/categories/images/${fallbackCategory}.jpg`;
+                // If Next.js Image component is needed for fallback, use regular img
+                e.currentTarget.onerror = null; // Prevent infinite loop
+              }}
+            />
+          ) : (
+            <Image
+              src={`/categories/images/${props.imgUrl || props.category || 'default'}.jpg`}
+              width={400}
+              height={200}
+              alt={props.Title}
+            />
+          )}
         </div>
         <div className={style.card_content}>
-          <h3 className="flex justify-center" id="news-title">
+          <h3 className="flex justify-center text-center text-base font-semibold leading-tight mb-2" id="news-title">
             {props.Title}
           </h3>
-          <p className="mt-2" id="news-desc">
+          <p className="mt-2 text-sm text-gray-600 line-clamp-3" id="news-desc">
             {props.description}
           </p>
         </div>
-        <div className="flex justify-center items-center space-x-4">
-          <div className="flex flex-col justify-center items-center">
-            Positive <div>{props.positive}%</div>
+        <div className="flex justify-center items-center space-x-3 py-3">
+          <div className="flex flex-col justify-center items-center px-3 py-1.5 bg-green-50 rounded-lg">
+            <span className="text-xs text-gray-600 font-medium">Positive</span>
+            <div className="text-base font-bold text-green-600">{props.positive}%</div>
           </div>
-          <div className="flex flex-col justify-center items-center">
-            Neutral <div>{props.neutral}%</div>
+          <div className="flex flex-col justify-center items-center px-3 py-1.5 bg-gray-50 rounded-lg">
+            <span className="text-xs text-gray-600 font-medium">Neutral</span>
+            <div className="text-base font-bold text-gray-600">{props.neutral}%</div>
           </div>
-          <div className="flex flex-col justify-center items-center">
-            Negative <div>{props.negative}%</div>
+          <div className="flex flex-col justify-center items-center px-3 py-1.5 bg-red-50 rounded-lg">
+            <span className="text-xs text-gray-600 font-medium">Negative</span>
+            <div className="text-base font-bold text-red-600">{props.negative}%</div>
           </div>
           {!bookMark ? (
             <img
-              className="hover:cursor-pointer mr-4"
+              className="hover:cursor-pointer"
               onClick={() => setBookMark(!bookMark)}
               src="Bookmark.png"
-              width={50}
-              height={50}
+              width={40}
+              height={40}
               alt=""
             />
           ) : (
             <img
-              className="hover:cursor-pointer mr-4"
+              className="hover:cursor-pointer"
               onClick={() => setBookMark(!bookMark)}
               src="bookmarkActive.png"
-              width={60}
-              height={60}
+              width={40}
+              height={40}
               alt=""
             />
           )}
@@ -133,17 +154,21 @@ const Card: React.FC<CardProps> = (props) => {
             Low
           </label>
         </div>
-        <div className="flex justify-center items-center mt-2">{props.time}</div>
-        <div className="flex justify-center items-center pt-3">
-          
+        <div className="flex justify-center items-center mt-3 mb-2">
+          <span className="text-xs text-gray-500">{props.time}</span>
+        </div>
+        <div className="flex justify-between items-center pt-2 px-4 pb-3 border-t border-gray-100">
           <a
-            className="text-lg hover:underline hover:scale-[1.01] duration-300"
+            className="text-blue-600 hover:text-blue-800 font-medium text-sm hover:underline transition-colors"
             target="_blank"
+            rel="noopener noreferrer"
             href={props.url}
           >
-            Read More
+            Read More →
           </a>
-          <label>Updated On : {extractDateFromTimestamp(props.updatedOn)}</label>
+          <span className="text-xs text-gray-500">
+            Updated: {extractDateFromTimestamp(props.updatedOn) || 'N/A'}
+          </span>
         </div>
       </div>
     </div>

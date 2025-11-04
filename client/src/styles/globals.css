@@ -1,56 +1,53 @@
-/* @tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
-}
-
-body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
-} */
-@import url("https://fonts.googleapis.com/css2?family=Poppins&display=swap");
-@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-* > * {
-  font-family: "Poppins", sans-serif;
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+/* Override react-slideshow-image styles */
+.react-slideshow-container {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.react-slideshow-wrapper {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.react-slideshow-wrapper .images-wrap {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.react-slideshow-wrapper .images-wrap > div {
+  width: 100% !important;
+  height: 100% !important;
+  background: transparent !important;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
   box-sizing: border-box;
+  padding: 0;
+  margin: 0;
 }
-.libre{
-  font-family: 'Libre Baskerville', serif;
-}
-.input-text {
-  @apply mt-1 block w-60 px-3 py-2 bg-white border border-slate-300  text-sm shadow-sm placeholder-slate-500;
-  @apply focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500;
-}
-.input-number {
-  @apply  w-20 py-3 bg-white border border-slate-300  text-sm shadow-sm placeholder-slate-500;
-  @apply focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500;
+
+html {
+  scroll-behavior: smooth;
 }

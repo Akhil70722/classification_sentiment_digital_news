@@ -6,37 +6,58 @@
 }
 
 .card {
-  margin-bottom: 30px;
-  width: 630px;
+  margin-bottom: 0;
+  width: 100%;
   min-height: 400px;
-  box-shadow: 0 0 4px black;
-  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
   cursor: pointer;
   background-color: #fff;
   overflow: hidden;
   transition: all 0.3s ease;
+  border: 1px solid #e5e7eb;
 }
 
 .card:hover {
-  /* box-shadow: 1px 1px 8px #d4ecff; */
-  box-shadow: 1px 1px 8px darkblue; 
-  background-color: #f9fdff;
-  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  background-color: #fff;
+  transform: translateY(-4px);
+}
+
+.card_header {
+  position: relative;
+  overflow: hidden;
 }
 
 .card_header img {
   width: 100%;
-  height: 200px;
+  height: 180px;
   object-fit: cover;
+  transition: transform 0.3s ease;
+}
+
+.card:hover .card_header img {
+  transform: scale(1.05);
 }
 
 .card_content {
-  padding: 12px;
+  padding: 16px;
 }
 
 .news_source {
   margin-block: 12px;
 }
+
 .card-title {
   font-weight: bold;
+  font-size: 1rem;
+  line-height: 1.3;
+  color: #1f2937;
+  margin-bottom: 10px;
+}
+
+.priorityCheckboxes {
+  padding: 10px 16px;
+  background-color: #f9fafb;
+  border-top: 1px solid #e5e7eb;
 }
