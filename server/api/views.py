@@ -558,7 +558,7 @@ DEPARTMENT_MAPPING = {
 
 # ─────── EMAIL CONFIG ───────
 EMAIL_CONFIG = {
-    'sender_email': 'akhil.mate22@vit.edu',  # Replace with your email
+    'sender_email': 'putyourmail@gmail.com',  # Replace with your email
     'sender_password': 'bhsq enex bzah rouw',        # Replace with your password
     'smtp_server': 'smtp.gmail.com',          # Change if using different provider
     'smtp_port': 587
