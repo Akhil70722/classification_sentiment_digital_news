@@ -19,8 +19,8 @@ const LatestPosts: React.FC<LatestPostsProps> = ({ selectedCategory, selectedLan
         let response;
         
         if (selectedCategory) {
-          // Make POST request with category filter
-          response = await fetch("http://127.0.0.1:8000/", {
+          // Make POST request with category filter using new API endpoint
+          response = await fetch("http://127.0.0.1:8000/api/news/filter/", {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -31,8 +31,8 @@ const LatestPosts: React.FC<LatestPostsProps> = ({ selectedCategory, selectedLan
             }),
           });
         } else {
-          // Make GET request for all news with language parameter
-          response = await fetch(`http://127.0.0.1:8000/?language=${selectedLanguage}`);
+          // Make GET request for all news with language parameter using new API endpoint
+          response = await fetch(`http://127.0.0.1:8000/api/news/?language=${selectedLanguage}`);
         }
         
         if (!response.ok) {

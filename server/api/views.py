@@ -481,6 +481,8 @@
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from django.views import View
+from django.utils.decorators import method_decorator
 import threading
 import feedparser
 import xlsxwriter
@@ -795,9 +797,364 @@ def fetch_and_process(max_items=20, output_file='RSS_FullText.xlsx'):
 
     wb.close()
 
-# ─────── DJANGO VIEW ───────
+# ─────── HELPER FUNCTION FOR PROCESSING NEWS ───────
+def _process_news_data(language='en'):
+    """
+    Helper function to process RSS feeds and analyze news articles.
+    Returns processed news list and negative news list.
+    """
+    print(f"Processing news data for language: {language}")
+    
+    # 1) Fetch full articles in background
+    t = threading.Thread(target=fetch_and_process)
+    t.start()
+    t.join()
+
+    # 2) Load into DataFrame
+    df = pd.read_excel('RSS_FullText.xlsx')
+
+    # Reset translator instance for new request (to avoid issues)
+    global _translator_instance
+    if language == 'hi':
+        _translator_instance = None  # Reset to create fresh instance
+        print(f"Starting translation to Hindi for {len(df)} items (this may take 30-60 seconds)...")
+
+    # 3) Preprocess & Predict
+    news = []
+    negative_news = []  # Store negative news for reporting
+    output_rows = []
+
+    for idx, r in df.iterrows():
+        raw = r['FullArticle'] or ''
+        clean = preprocess(raw)
+        cat_id = predict_category(clean)
+        cat_name = _categories[cat_id]
+        sent = predict_sentiment(clean)
+        emo = predict_emotion(clean)
+        dept = DEPARTMENT_MAPPING.get(cat_id, {}).get('name', '')
+
+        # Check if negative sentiment is greater than 80%
+        if sent[1] > 0.95:
+            negative_news.append({
+                'title': r['Title'],
+                'url': r['Link'],
+                'category': cat_name,
+                'sentiment': sent,
+                'published': r['Published'],
+                'source': r['Source'],
+                'description': raw[:1000] + '...' if len(raw) > 1000 else raw
+            })
+
+        # Try to extract image from article if not already in Excel
+        image_url = ''
+        try:
+            if 'ImageURL' in r and pd.notna(r['ImageURL']):
+                image_url = str(r['ImageURL'])
+            if not image_url or image_url == 'nan':
+                art = Article(r['Link'])
+                art.download()
+                art.parse()
+                image_url = art.top_image or ''
+        except:
+            image_url = ''
+        
+        # Prepare news item
+        news_item = {
+            'Source': r['Source'],
+            'Title': r['Title'],
+            'FullArticle': raw,
+            'URL': r['Link'],
+            'Published': r['Published'],
+            'Category': cat_name,
+            'Sentiment': sent,
+            'Emotion': emo,
+            'Department': dept,
+            'ImageURL': image_url,
+        }
+        
+        # Translate if Hindi is requested
+        if language == 'hi':
+            try:
+                translated_title = translate_text(str(r['Title']), 'hi', max_length=200)
+                news_item['TitleHindi'] = translated_title if translated_title and translated_title.strip() else ''
+                
+                description = str(raw)[:200] + '...' if len(str(raw)) > 200 else str(raw)
+                translated_desc = translate_text(description, 'hi', max_length=200)
+                news_item['DescriptionHindi'] = translated_desc if translated_desc and translated_desc.strip() else ''
+                news_item['FullArticleHindi'] = ''
+                
+                if (idx + 1) % 10 == 0:
+                    print(f"Translated {idx + 1}/{len(df)} items...")
+            except Exception as e:
+                print(f"Error translating news item {r['Title'][:50]}: {e}")
+                news_item['TitleHindi'] = ''
+                news_item['DescriptionHindi'] = ''
+                news_item['FullArticleHindi'] = ''
+        else:
+            news_item['TitleHindi'] = ''
+            news_item['DescriptionHindi'] = ''
+            news_item['FullArticleHindi'] = ''
+        
+        news.append(news_item)
+
+        # Prepare row for Excel
+        output_rows.append([
+            r['Source'],
+            r['Title'],
+            raw,
+            r['Link'],
+            r['Published'],
+            f"Positive={sent[0]:.2f}, Negative={sent[1]:.2f}, Neutral={sent[2]:.2f}",
+            cat_name,
+            emo,
+            dept
+        ])
+
+    # Write to Excel with all columns
+    output_file = 'RSS_Processed.xlsx'
+    wb = xlsxwriter.Workbook(output_file)
+    ws = wb.add_worksheet()
+    ws.write_row(0, 0, [
+        'Source', 'Title', 'FullArticle', 'Link', 'Published', 'Sentiment', 'Category', 'Emotion', 'Department'
+    ])
+    for idx, row in enumerate(output_rows, 1):
+        ws.write_row(idx, 0, row)
+    wb.close()
+
+    # Send alerts for negative news
+    for item in negative_news:
+        department = DEPARTMENT_MAPPING.get(predict_category(preprocess(item['description'])))
+        
+        if department:
+            email_body = (
+                f"A negative news article was detected.\n\n"
+                f"Title: {item['title']}\n"
+                f"URL: {item['url']}\n"
+                f"Category: {item['category']}\n"
+                f"Sentiment Score: Positive={item['sentiment'][0]:.2f}, "
+                f"Negative={item['sentiment'][1]:.2f}, "
+                f"Neutral={item['sentiment'][2]:.2f}\n"
+                f"Published: {item['published']}\n"
+                f"Source: {item['source']}\n\n"
+                f"Article Description:\n{item['description']}\n\n"
+                f"Please review this article for potential action."
+            )
+            
+            subject = f"Negative News Alert: {item['category']} - {item['title'][:50]}..."
+            
+            success = send_email(
+                department['emails'],
+                subject,
+                email_body
+            )
+            
+            if success:
+                print(f"Alert sent to {department['name']} about: {item['url']}")
+            else:
+                print(f"Failed to send alert about: {item['url']}")
+
+    print(f"Total news items processed: {len(news)}")
+    if language == 'hi':
+        print(f"Translation completed for {len(news)} items")
+    
+    return news, negative_news
+
+# ─────── API VIEW CLASSES ───────
+
+class CsrfExemptMixin:
+    """Mixin to exempt CSRF verification for API endpoints"""
+    @method_decorator(csrf_exempt)
+    def dispatch(self, *args, **kwargs):
+        return super().dispatch(*args, **kwargs)
+
+
+class HealthCheckView(CsrfExemptMixin, View):
+    """Health check endpoint - returns API status"""
+    
+    def get(self, request):
+        """Handle GET request for health check"""
+        return JsonResponse({
+            'status': 'healthy',
+            'service': 'News Intelligence & Alert System',
+            'timestamp': pd.Timestamp.now().isoformat()
+        })
+
+
+class CategoriesView(CsrfExemptMixin, View):
+    """Get list of all available news categories"""
+    
+    def get(self, request):
+        """Handle GET request to retrieve categories"""
+        categories = [
+            {'id': 0, 'name': 'Entertainment', 'frontend_name': 'Information and Broadcasting'},
+            {'id': 1, 'name': 'Business', 'frontend_name': 'Finance'},
+            {'id': 2, 'name': 'Politics', 'frontend_name': 'Politics'},
+            {'id': 3, 'name': 'Judiciary', 'frontend_name': 'Law and Justice'},
+            {'id': 4, 'name': 'Crime', 'frontend_name': 'Internal Security'},
+            {'id': 5, 'name': 'Culture', 'frontend_name': 'Culture'},
+            {'id': 6, 'name': 'Sports', 'frontend_name': 'Youth Affairs and Sports'},
+            {'id': 7, 'name': 'Science', 'frontend_name': 'Science and Technology'},
+            {'id': 8, 'name': 'International', 'frontend_name': 'External Affairs'},
+            {'id': 9, 'name': 'Technology', 'frontend_name': 'Electronics and Information Technology'},
+        ]
+        
+        return JsonResponse({
+            'result': 'success',
+            'categories': categories,
+            'total': len(categories)
+        })
+
+
+class NewsListView(CsrfExemptMixin, View):
+    """GET endpoint to fetch all news articles"""
+    
+    def get(self, request):
+        """Handle GET request to retrieve all news"""
+        print("GET /api/news/ - Fetching all news")
+        
+        # Get language parameter from query string
+        language = request.GET.get('language', 'en')
+        
+        try:
+            news, negative_news = _process_news_data(language)
+            
+            if len(news) == 0:
+                return JsonResponse(
+                    {'result': 'success', 'news': [], 'message': 'No news items available', 'total': 0},
+                    safe=False,
+                    json_dumps_params={'ensure_ascii': False}
+                )
+            
+            return JsonResponse(
+                {'result': 'success', 'news': news, 'total': len(news)},
+                safe=False,
+                json_dumps_params={'ensure_ascii': False}
+            )
+        except Exception as e:
+            print(f"Error in NewsListView: {e}")
+            import traceback
+            traceback.print_exc()
+            return JsonResponse(
+                {'result': 'error', 'message': str(e), 'news': []},
+                safe=False,
+                status=500
+            )
+
+
+class NewsFilterView(CsrfExemptMixin, View):
+    """POST endpoint to filter news by category"""
+    
+    def post(self, request):
+        """Handle POST request to filter news by category"""
+        print("POST /api/news/filter/ - Filtering news by category")
+        
+        try:
+            import json
+            
+            # Parse request body
+            if not request.body:
+                return JsonResponse(
+                    {'result': 'error', 'message': 'Request body is empty'},
+                    status=400
+                )
+            
+            body_str = request.body.decode('utf-8')
+            if not body_str.strip():
+                return JsonResponse(
+                    {'result': 'error', 'message': 'Request body is empty'},
+                    status=400
+                )
+            
+            data = json.loads(body_str)
+            category_filter = data.get('category', None)
+            language = data.get('language', 'en')
+            
+            print(f"Category filter: {category_filter}, Language: {language}")
+            
+            # Process news data
+            news, negative_news = _process_news_data(language)
+            
+            if len(news) == 0:
+                return JsonResponse(
+                    {'result': 'success', 'news': [], 'message': 'No news items available', 'total': 0, 'filtered': 0},
+                    safe=False,
+                    json_dumps_params={'ensure_ascii': False}
+                )
+            
+            # Filter by category if provided
+            if category_filter:
+                filtered_news = self._filter_by_category(news, category_filter)
+                
+                print(f"Filtered news items: {len(filtered_news)}")
+                
+                return JsonResponse(
+                    {'result': 'success', 'news': filtered_news, 'total': len(news), 'filtered': len(filtered_news)},
+                    safe=False,
+                    json_dumps_params={'ensure_ascii': False}
+                )
+            else:
+                # No category filter, return all news
+                return JsonResponse(
+                    {'result': 'success', 'news': news, 'total': len(news)},
+                    safe=False,
+                    json_dumps_params={'ensure_ascii': False}
+                )
+                
+        except json.JSONDecodeError as e:
+            print(f"JSON decode error: {e}")
+            return JsonResponse(
+                {'result': 'error', 'message': f'Invalid JSON: {str(e)}', 'news': []},
+                status=400
+            )
+        except Exception as e:
+            print(f"Error in NewsFilterView: {e}")
+            import traceback
+            traceback.print_exc()
+            return JsonResponse(
+                {'result': 'error', 'message': str(e), 'news': []},
+                status=500
+            )
+    
+    def _filter_by_category(self, news, category_filter):
+        """Helper method to filter news by category"""
+        # Map frontend category names to backend category names
+        category_mapping = {
+            'External Affairs': 'International',
+            'Law and Justice': 'Judiciary',
+            'Youth Affairs and Sports': 'Sports',
+            'Finance': 'Business',
+            'Internal Security': 'Crime',
+            'Culture': 'Culture',
+            'Information and Broadcasting': 'Entertainment',
+            'Home Affairs': 'Crime',
+            'Science and Technology': 'Science',
+            'Electronics and Information Technology': 'Technology'
+        }
+        
+        backend_category = category_mapping.get(category_filter, category_filter)
+        print(f"Mapped category: {backend_category}")
+        
+        # Filter news by category (case-insensitive)
+        filtered_news = [
+            item for item in news 
+            if item.get('Category') and 
+            str(item.get('Category')).strip().lower() == str(backend_category).strip().lower()
+        ]
+        
+        # Try partial matching if no exact match
+        if len(filtered_news) == 0:
+            filtered_news = [
+                item for item in news 
+                if item.get('Category') and 
+                str(backend_category).strip().lower() in str(item.get('Category')).strip().lower()
+            ]
+        
+        return filtered_news
+
+# ─────── LEGACY ENDPOINT (for backward compatibility) ───────
 @csrf_exempt
 def index(request):
+    """Legacy endpoint for backward compatibility - kept as function-based view"""
     print("Session started")
     
     # Get language parameter from request
