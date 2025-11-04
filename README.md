@@ -1,5 +1,7 @@
 # 📡 News Intelligence & Alert System
 
+> **📖 Setup Instructions:** See [SETUP.md](./SETUP.md) for detailed installation and configuration guide.
+
 ## 📌 Objective
 This project is an end-to-end automated pipeline that:
 - Extracts live digital news from major Indian news portals.
