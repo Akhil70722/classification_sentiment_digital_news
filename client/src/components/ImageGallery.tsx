@@ -4,7 +4,7 @@ import "react-slideshow-image/dist/styles.css";
 import { ArrowLeftIcon, ArrowRightIcon } from "@heroicons/react/24/solid";
 
 const ImageGallery = () => {
-  //Array of Images
+  // Static gallery images - these remain constant
   const images = [
     "https://media.istockphoto.com/id/1329704926/photo/concept-of-indian-justice-system-showing-by-using-judge-gavel-balance-scale-on-indian-flag-as.jpg?s=612x612&w=0&k=20&c=-E8skqunh-qSszI0etp8-56tp6HfUecFndPAIb5ezoA=",
     "https://i.cdn.newsbytesapp.com/images/l95420221215105514.jpeg",
