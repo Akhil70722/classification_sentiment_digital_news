@@ -1,13 +1,19 @@
 
 import React from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons";
+import { faMagnifyingGlass, faChevronDown } from "@fortawesome/free-solid-svg-icons";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 
-const Header = () => {
+interface HeaderProps {
+  selectedLanguage: 'en' | 'hi';
+  onLanguageChange: (lang: 'en' | 'hi') => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ selectedLanguage, onLanguageChange }) => {
   const [minutes, setMinutes] = useState(0);
   const [seconds, setSeconds] = useState(0);
+  const [showLanguageDropdown, setShowLanguageDropdown] = useState(false);
 
   useEffect(() => {
     const currTime = new Date();
@@ -25,6 +31,13 @@ const Header = () => {
 
     return () => clearInterval(interval);
   }, []);
+
+  const languages = [
+    { code: 'en', name: 'English', nativeName: 'English' },
+    { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' }
+  ];
+
+  const currentLanguage = languages.find(lang => lang.code === selectedLanguage) || languages[0];
 
   return (
     <>
@@ -51,7 +64,7 @@ const Header = () => {
                 <input
                   type="text"
                   className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                  placeholder="Search Your Interest..."
+                  placeholder={selectedLanguage === 'hi' ? "अपनी रुचि खोजें..." : "Search Your Interest..."}
                 />
                 <FontAwesomeIcon
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
@@ -67,20 +80,61 @@ const Header = () => {
               </h1>
             </div>
 
-            {/* Right Side - About, Refresh, Logo */}
-            <div className="col-span-4 flex items-center justify-end gap-6">
+            {/* Right Side - Language Selector, About, Refresh, Logo */}
+            <div className="col-span-4 flex items-center justify-end gap-4">
+              {/* Language Selector */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowLanguageDropdown(!showLanguageDropdown)}
+                  className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors duration-200 border border-gray-300 rounded-lg bg-white hover:bg-gray-50"
+                >
+                  <span>{currentLanguage.nativeName}</span>
+                  <FontAwesomeIcon 
+                    icon={faChevronDown} 
+                    className={`text-xs transition-transform duration-200 ${showLanguageDropdown ? 'transform rotate-180' : ''}`}
+                  />
+                </button>
+                
+                {showLanguageDropdown && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-10" 
+                      onClick={() => setShowLanguageDropdown(false)}
+                    ></div>
+                    <div className="absolute right-0 mt-2 w-40 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
+                      {languages.map((lang) => (
+                        <button
+                          key={lang.code}
+                          onClick={() => {
+                            onLanguageChange(lang.code as 'en' | 'hi');
+                            setShowLanguageDropdown(false);
+                          }}
+                          className={`w-full text-left px-4 py-2 text-sm hover:bg-blue-50 transition-colors ${
+                            selectedLanguage === lang.code 
+                              ? 'bg-blue-50 text-blue-600 font-medium' 
+                              : 'text-gray-700'
+                          }`}
+                        >
+                          {lang.nativeName}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
               <div className="flex items-center gap-6">
                 <a 
                   href="#about" 
                   className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium text-sm"
                 >
-                  About
+                  {selectedLanguage === 'hi' ? 'के बारे में' : 'About'}
                 </a>
                 <a 
                   href="/" 
                   className="text-gray-700 hover:text-blue-600 transition-colors duration-200 font-medium text-sm"
                 >
-                  Refresh
+                  {selectedLanguage === 'hi' ? 'ताज़ा करें' : 'Refresh'}
                 </a>
               </div>
               <img 

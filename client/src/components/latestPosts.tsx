@@ -3,9 +3,10 @@ import Card from "../components/card";
 
 interface LatestPostsProps {
   selectedCategory: string | null;
+  selectedLanguage: 'en' | 'hi';
 }
 
-const LatestPosts: React.FC<LatestPostsProps> = ({ selectedCategory }) => {
+const LatestPosts: React.FC<LatestPostsProps> = ({ selectedCategory, selectedLanguage }) => {
   const [newsData, setNewsData] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -24,11 +25,14 @@ const LatestPosts: React.FC<LatestPostsProps> = ({ selectedCategory }) => {
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ category: selectedCategory }),
+            body: JSON.stringify({ 
+              category: selectedCategory,
+              language: selectedLanguage 
+            }),
           });
         } else {
-          // Make GET request for all news
-          response = await fetch("http://127.0.0.1:8000/");
+          // Make GET request for all news with language parameter
+          response = await fetch(`http://127.0.0.1:8000/?language=${selectedLanguage}`);
         }
         
         if (!response.ok) {
@@ -40,7 +44,19 @@ const LatestPosts: React.FC<LatestPostsProps> = ({ selectedCategory }) => {
 
         if (data && data.news !== undefined) {
           setNewsData(data.news);
-          console.log(`Loaded ${data.news.length} news items`);
+          console.log(`Loaded ${data.news.length} news items for language: ${selectedLanguage}`);
+          
+          // Debug: Check if Hindi translations exist
+          if (selectedLanguage === 'hi' && data.news.length > 0) {
+            const firstItem = data.news[0];
+            console.log('First news item Hindi fields:', {
+              hasTitleHindi: !!firstItem['TitleHindi'],
+              hasDescriptionHindi: !!firstItem['DescriptionHindi'],
+              titleHindi: firstItem['TitleHindi']?.substring(0, 50),
+              title: firstItem['Title']?.substring(0, 50)
+            });
+          }
+          
           if (data.news.length === 0 && selectedCategory) {
             console.warn(`No news found for category: ${selectedCategory}`);
           }
@@ -56,26 +72,46 @@ const LatestPosts: React.FC<LatestPostsProps> = ({ selectedCategory }) => {
     };
 
     fetchData();
-  }, [selectedCategory]);
+  }, [selectedCategory, selectedLanguage]);
 
   if (isLoading) {
-    return <div className="flex justify-center items-center text-2xl">Loading...</div>;
+    return <div className="flex justify-center items-center text-2xl">{selectedLanguage === 'hi' ? 'लोड हो रहा है...' : 'Loading...'}</div>;
   }
 
   if (error) {
-    return <div className="flex justify-center items-center text-2xl">Error: {error}</div>;
+    return <div className="flex justify-center items-center text-2xl">{selectedLanguage === 'hi' ? 'त्रुटि: ' : 'Error: '}{error}</div>;
   }
+
+  const translations = {
+    en: {
+      title: "LATEST ARTICLES",
+      subtitle: "Crawled more than",
+      live: "LIVE",
+      news: "news!"
+    },
+    hi: {
+      title: "नवीनतम लेख",
+      subtitle: "कुल",
+      live: "लाइव",
+      news: "समाचार क्रॉल किए गए!"
+    }
+  };
+
+  const t = translations[selectedLanguage];
 
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
         <div className="flex justify-center items-center mb-4">
-          <h2 className="text-4xl font-bold text-gray-900">LATEST ARTICLES</h2>
+          <h2 className="text-4xl font-bold text-gray-900">{t.title} {selectedLanguage === 'en' ? 'IN ' + selectedLanguage.toUpperCase() : ''}</h2>
+          {selectedLanguage === 'hi' && (
+            <span className="ml-2 text-2xl text-gray-600">(हिन्दी में)</span>
+          )}
         </div>
         <div className="flex justify-center items-center mb-6">
           <p className="text-gray-600 text-lg">
-            Crawled more than <span className="font-bold text-blue-600">{newsData.length}+</span>{" "}
-            <span className="font-bold">LIVE</span> news!
+            {t.subtitle} <span className="font-bold text-blue-600">{newsData.length}+</span>{" "}
+            <span className="font-bold">{t.live}</span> {t.news}
           </p>
         </div>
       </div>
@@ -86,6 +122,8 @@ const LatestPosts: React.FC<LatestPostsProps> = ({ selectedCategory }) => {
             imgUrl={news["ImageURL"] || news["Category"]}
             Title={news["Title"]}
             description={news["Description"] || (typeof news["FullArticle"] === 'string' ? news["FullArticle"].substring(0, 200) : "No description available")}
+            TitleHindi={news["TitleHindi"]}
+            descriptionHindi={news["DescriptionHindi"]}
             positive={Math.round(news["Sentiment"][0] * 100)}
             neutral={Math.round(news["Sentiment"][2] * 100)}
             negative={Math.round(news["Sentiment"][1] * 100)}
@@ -93,6 +131,7 @@ const LatestPosts: React.FC<LatestPostsProps> = ({ selectedCategory }) => {
             url={news["URL"]}
             updatedOn={news["Published"]}
             category={news["Category"]}
+            language={selectedLanguage}
           />
         ))}
       </div>

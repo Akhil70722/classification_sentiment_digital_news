@@ -9,15 +9,27 @@ interface CardProps {
   positive: number;
   neutral: number;
   negative: number;
+  time: string;
   url: string;
   updatedOn: string;
-  time: string;
-  category?: string;
+  category: string;
+  language?: 'en' | 'hi';
+  TitleHindi?: string;
+  descriptionHindi?: string;
 }
 
 const Card: React.FC<CardProps> = (props) => {
   const [bookMark, setBookMark] = useState(false);
   const [priority, setPriority] = useState<string[]>([]);
+  const language = props.language || 'en';
+  
+  // Use Hindi text if available and language is Hindi, otherwise use English
+  const displayTitle = (language === 'hi' && props.TitleHindi && props.TitleHindi.trim() !== '') 
+    ? props.TitleHindi 
+    : props.Title;
+  const displayDescription = (language === 'hi' && props.descriptionHindi && props.descriptionHindi.trim() !== '') 
+    ? props.descriptionHindi 
+    : props.description;
 
   const handlePriorityChange = (value: string) => {
     const updatedPriority = [...priority];
@@ -84,12 +96,12 @@ const Card: React.FC<CardProps> = (props) => {
           )}
         </div>
         <div className={style.card_content}>
-          <h3 className="flex justify-center text-center text-base font-semibold leading-tight mb-2" id="news-title">
-            {props.Title}
-          </h3>
-          <p className="mt-2 text-sm text-gray-600 line-clamp-3" id="news-desc">
-            {props.description}
-          </p>
+                           <h3 className="flex justify-center text-center text-base font-semibold leading-tight mb-2" id="news-title">
+                   {displayTitle}
+                 </h3>
+                 <p className="mt-2 text-sm text-gray-600 line-clamp-3" id="news-desc">
+                   {displayDescription}
+                 </p>
         </div>
         <div className="flex justify-center items-center space-x-3 py-3">
           <div className="flex flex-col justify-center items-center px-3 py-1.5 bg-green-50 rounded-lg">
@@ -158,14 +170,14 @@ const Card: React.FC<CardProps> = (props) => {
           <span className="text-xs text-gray-500">{props.time}</span>
         </div>
         <div className="flex justify-between items-center pt-2 px-4 pb-3 border-t border-gray-100">
-          <a
-            className="text-blue-600 hover:text-blue-800 font-medium text-sm hover:underline transition-colors"
-            target="_blank"
-            rel="noopener noreferrer"
-            href={props.url}
-          >
-            Read More →
-          </a>
+                           <a
+                   className="text-blue-600 hover:text-blue-800 font-medium text-sm hover:underline transition-colors"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   href={props.url}
+                 >
+                   {language === 'hi' ? 'और पढ़ें →' : 'Read More →'}
+                 </a>
           <span className="text-xs text-gray-500">
             Updated: {extractDateFromTimestamp(props.updatedOn) || 'N/A'}
           </span>

@@ -502,6 +502,7 @@ import tensorflow as tf
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from deep_translator import GoogleTranslator
 
 # ─────── RSS CONFIG ───────
 RSS_FEEDS = {
@@ -677,6 +678,43 @@ def predict_category(text):
 def predict_emotion(text):
     return emotion_model(text[:1500])[0][0]['label']
 
+# Global translator instance to reuse (faster)
+_translator_instance = None
+
+def get_translator(source='en', target='hi'):
+    """Get or create translator instance"""
+    global _translator_instance
+    if _translator_instance is None:
+        _translator_instance = GoogleTranslator(source=source, target=target)
+    return _translator_instance
+
+def translate_text(text, target_lang='hi', max_length=300):
+    """Translate text to target language using Google Translator - optimized version"""
+    try:
+        if not text or len(text.strip()) == 0:
+            return ''
+        
+        # Limit text length for faster translation (only translate what's needed)
+        text_to_translate = text[:max_length] if len(text) > max_length else text
+        
+        if target_lang == 'hi':
+            translator = get_translator(source='en', target='hi')
+            translated = translator.translate(text_to_translate)
+            if translated and translated.strip():
+                print(f"Translated: '{text_to_translate[:30]}...' -> '{translated[:30]}...'")
+                return translated
+            else:
+                print(f"Translation returned empty for: '{text_to_translate[:30]}...'")
+                return ''
+        else:
+            # If target is English, return original (news is already in English)
+            return text
+    except Exception as e:
+        print(f"Translation error for text '{text[:50]}...': {e}")
+        import traceback
+        traceback.print_exc()
+        return ''  # Return empty on error so frontend falls back to English
+
 def send_email(to_emails, subject, body):
     """Send email to concerned department about negative news"""
     try:
@@ -761,6 +799,21 @@ def fetch_and_process(max_items=20, output_file='RSS_FullText.xlsx'):
 @csrf_exempt
 def index(request):
     print("Session started")
+    
+    # Get language parameter from request
+    language = request.GET.get('language', 'en')
+    if request.method == 'POST':
+        try:
+            import json
+            if request.body:
+                body_str = request.body.decode('utf-8')
+                if body_str.strip():
+                    data = json.loads(body_str)
+                    language = data.get('language', language)
+        except:
+            pass
+    
+    print(f"Requested language: {language}")
 
     # 1) Fetch full articles in background
     t = threading.Thread(target=fetch_and_process)
@@ -770,6 +823,12 @@ def index(request):
     # 2) Load into DataFrame
     df = pd.read_excel('RSS_FullText.xlsx')
 
+    # Reset translator instance for new request (to avoid issues)
+    global _translator_instance
+    if language == 'hi':
+        _translator_instance = None  # Reset to create fresh instance
+        print(f"Starting translation to Hindi for {len(df)} items (this may take 30-60 seconds)...")
+
     # 3) Preprocess & Predict
     news = []
     negative_news = []  # Store negative news for reporting
@@ -777,7 +836,7 @@ def index(request):
     # Prepare for Excel output
     output_rows = []
 
-    for _, r in df.iterrows():
+    for idx, r in df.iterrows():
         raw = r['FullArticle'] or ''
         clean = preprocess(raw)
         cat_id = predict_category(clean)
@@ -813,7 +872,8 @@ def index(request):
         except:
             image_url = ''
         
-        news.append({
+        # Prepare news item
+        news_item = {
             'Source': r['Source'],
             'Title': r['Title'],
             'FullArticle': raw,
@@ -824,7 +884,44 @@ def index(request):
             'Emotion': emo,
             'Department': dept,
             'ImageURL': image_url,  # Add actual article image URL
-        })
+        }
+        
+        # Translate if Hindi is requested (only translate what's displayed in UI)
+        if language == 'hi':
+            try:
+                # Only translate title and short description for performance
+                # Skip full article translation since it's not shown in cards
+                translated_title = translate_text(str(r['Title']), 'hi', max_length=200)
+                news_item['TitleHindi'] = translated_title if translated_title and translated_title.strip() else ''
+                
+                # Translate only first 200 chars for description (what's shown in card)
+                description = str(raw)[:200] + '...' if len(str(raw)) > 200 else str(raw)
+                translated_desc = translate_text(description, 'hi', max_length=200)
+                news_item['DescriptionHindi'] = translated_desc if translated_desc and translated_desc.strip() else ''
+                
+                # Don't translate full article - too slow and not needed
+                news_item['FullArticleHindi'] = ''  # Empty since we don't need it
+                
+                # Show progress every 10 items
+                if (idx + 1) % 10 == 0:
+                    print(f"Translated {idx + 1}/{len(df)} items...")
+                    print(f"Sample translation - Title: {translated_title[:50]}...")
+            except Exception as e:
+                print(f"Error translating news item {r['Title'][:50]}: {e}")
+                import traceback
+                traceback.print_exc()
+                # If translation fails, don't set Hindi fields (will fall back to English)
+                # Don't set them to English text, leave empty or unset
+                news_item['TitleHindi'] = ''
+                news_item['DescriptionHindi'] = ''
+                news_item['FullArticleHindi'] = ''
+        else:
+            # For English, ensure Hindi fields are not present (or empty)
+            news_item['TitleHindi'] = ''
+            news_item['DescriptionHindi'] = ''
+            news_item['FullArticleHindi'] = ''
+        
+        news.append(news_item)
 
         # Prepare row for Excel
         output_rows.append([
@@ -884,6 +981,8 @@ def index(request):
                 print(f"Failed to send alert about: {item['url']}")
 
     print(f"Total news items processed: {len(news)}")
+    if language == 'hi':
+        print(f"Translation completed for {len(news)} items")
     
     # If no news was processed, return early with empty list
     if len(news) == 0:
@@ -920,7 +1019,11 @@ def index(request):
             
             data = json.loads(body_str)
             category_filter = data.get('category', None)
+            request_language = data.get('language', 'en')
+            if request_language:
+                language = request_language
             print(f"Category filter received: {category_filter}")
+            print(f"Language from POST: {request_language}")
             
             if category_filter:
                 # Map frontend category names to backend category names

@@ -10,10 +10,14 @@ const inter = Inter({ subsets: ["latin"] });
 
 export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedLanguage, setSelectedLanguage] = useState<'en' | 'hi'>('en');
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
+      <Header 
+        selectedLanguage={selectedLanguage}
+        onLanguageChange={setSelectedLanguage}
+      />
       <CategoryNav 
         activeCategory={selectedCategory}
         onCategoryChange={setSelectedCategory}
@@ -21,7 +25,10 @@ export default function Home() {
       <div className="mb-4">
         <ImageGallery />
       </div>
-      <LatestPosts selectedCategory={selectedCategory} />
+      <LatestPosts 
+        selectedCategory={selectedCategory}
+        selectedLanguage={selectedLanguage}
+      />
     </div>
   );
 }
