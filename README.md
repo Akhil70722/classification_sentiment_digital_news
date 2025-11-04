@@ -145,14 +145,14 @@ Django REST API with modules for:
 ## 🖼️ Screenshots
 
 ### Dashboard Example:
-![Dashboard Screenshot 1](https://github.com/Akhil70722/classification_sentiment_digital_news/blob/0ef89b9be261e4320f747e8293775d7f64c0a738/dashboard1.jpg)
+![Dashboard Screenshot 1](./dashboard1.jpg)
 
-![Dashboard Screenshot 2](https://github.com/Akhil70722/classification_sentiment_digital_news/blob/5564f7f349fbd6279cff4bc026ec57d2eaeb1923/dashboard2.jpg)
+![Dashboard Screenshot 2](./dashboard2.jpg)
 
 ### Email Alert Example:
-![Email Screenshot 1](https://github.com/Akhil70722/classification_sentiment_digital_news/blob/b4745de58288829d393eee4479b5ce29507a525e/email1.jpg)
+![Email Screenshot 1](./email1.jpg)
 
-![Email Screenshot 2](https://github.com/Akhil70722/classification_sentiment_digital_news/blob/a1ac4a2256964786629d4fd54572d42638be5419/email2.jpg)
+![Email Screenshot 2](./email2.jpg)
 
 ## 📊 Evaluation Parameters
 
