@@ -11,81 +11,68 @@ This project is an end-to-end automated pipeline that:
 - Provides a modern web-based interface for exploration and feedback.
 
 ## 🗞️ Data Collection
-### 🔍 Sources:
-- Times of India
-- The Hindu
-- News18 (English & Punjabi)
-- Dainik Bhaskar
-- AajTak
-- India Today
-- India TV
-- Jagran
-- Tribune
-- Hindustan Times
-- Indian Express
-- And more regional news portals
+### 🔍 Sources (RSS Feeds):
+- **News18 Latest**: Latest news feed
+- **News18 India**: India-specific news
+- **The Hindu**: National news
+- **Times of India (TOI)**: Top stories
 
-### 🛠️ Crawling Tools:
-- **Selenium**: For dynamic JavaScript content and video news extraction.
-- **BeautifulSoup**: For static HTML parsing.
-- **Scheduler**: Custom Python scripts using `schedule` and `threading`.
-- **MoviePy**: For video processing and audio extraction.
-- **SpeechRecognition API**: For Hindi-to-English transcription from video news.
+### 🛠️ Web Scraping Tools:
+- **feedparser**: For parsing RSS feed XML data
+- **newspaper3k**: For extracting full article text from URLs (automatically downloads, parses, and extracts clean content)
+- **BeautifulSoup**: Used internally by newspaper3k for HTML parsing
+- **Threading**: For background processing of RSS feeds
 
 ### 📄 Data Fields Extracted:
 - Headline
-- Full article text
+- Full article text (extracted automatically by newspaper3k)
 - Publish date
 - News source
-- Video transcription (for video news)
+- Article image URL
 
 ## 🧾 Dataset Description
-- Language: Primarily English, with Hindi video news transcription support.
-- Format: Text-based articles and transcribed video content.
-- Video Processing: Automated extraction and transcription of video news using Selenium, MoviePy, and SpeechRecognition API with Google Translate integration.
+- Language: Primarily English, with optional Hindi translation support using Google Translate API.
+- Format: Text-based articles extracted from RSS feeds.
+- Processing: Real-time RSS feed parsing → Full article extraction using newspaper3k → NLP analysis.
 
 ## ⚙️ Description of Work Done
 The full pipeline includes:
-- Web Crawling using Selenium + BeautifulSoup
-- Video News Processing using Selenium, MoviePy, and SpeechRecognition API
-- Text Processing using SpaCy, NLTK, TF-IDF, SBERT
-- Clustering & Classification using K-Means, HDBSCAN, DistilBERT
-- Sentiment Analysis with RoBERTa and TextBlob
-- Frontend using Next.js + Tailwind CSS
-- Backend using Django REST Framework
-- Alert System using Gmail SMTP
+- **RSS Feed Processing** using feedparser
+- **Article Extraction** using newspaper3k (automatically downloads and parses full article text)
+- **Text Preprocessing** using SpaCy, NLTK, contractions library
+- **Category Classification** using fine-tuned DistilBERT model
+- **Sentiment Analysis** with RoBERTa (CardiffNLP twitter-roberta-base-sentiment)
+- **Emotion Detection** using DistilBERT-based emotion classifier
+- **Multilingual Support** using deep-translator (Google Translate) for Hindi translation
+- **Frontend** using Next.js + React + TypeScript + Tailwind CSS
+- **Backend** using Django REST Framework with class-based views
+- **Alert System** using Gmail SMTP for negative news notifications
 
 ## 🧹 Data Preprocessing
 - Lowercasing
-- Removing punctuation, numbers, HTML
-- Stopword removal
-- Tokenization & Lemmatization using SpaCy
+- Contraction expansion (e.g., "don't" → "do not")
+- Removing punctuation, numbers, special characters
+- Stopword removal (NLTK, excluding 'not' to preserve negative sentiment)
+- Tokenization & Lemmatization using SpaCy (en_core_web_sm)
 - Missing data handling:
-  - Dropped empty entries
-  - Imputed publish dates from metadata
+  - Skipped empty articles
+  - Fallback to RSS description if article extraction fails
 
-## 🔍 Feature Engineering
-### 📌 Text Embedding:
-- TF-IDF
-- Sentence-BERT (SBERT)
-
-### 📌 Dimensionality Reduction:
-- UMAP for 2D clustering visualizations
-
-## 🧠 Algorithms Implemented
+## 🧠 Technologies & Tools Implemented
 
 | Task                | Tools & Techniques                |
 |---------------------|-----------------------------------|
-| Web Crawling        | Selenium + BeautifulSoup          |
-| Video Processing    | Selenium, MoviePy, SpeechRecognition|
-| Preprocessing       | SpaCy, NLTK                       |
-| Vectorization       | TF-IDF, SBERT                     |
-| Clustering          | K-Means, HDBSCAN                  |
-| Classification      | DistilBERT (Fine-tuned)           |
-| Sentiment Analysis  | RoBERTa, TextBlob                 |
-| Email Alerts        | Gmail SMTP                        |
-| Frontend Development| Next.js + Tailwind CSS            |
-| Backend Integration | Django REST Framework             |
+| RSS Feed Parsing    | feedparser                        |
+| Article Extraction  | newspaper3k (with BeautifulSoup internally) |
+| Text Preprocessing  | SpaCy, NLTK, contractions         |
+| Category Classification | DistilBERT (Fine-tuned TensorFlow model) |
+| Sentiment Analysis  | RoBERTa (twitter-roberta-base-sentiment) |
+| Emotion Detection   | DistilBERT-based emotion classifier |
+| Translation         | deep-translator (Google Translate) |
+| Email Alerts        | Gmail SMTP (smtplib)              |
+| Data Storage        | Excel files (xlsxwriter, pandas) |
+| Frontend Development| Next.js + React + TypeScript + Tailwind CSS |
+| Backend API         | Django REST Framework (Class-based views) |
 
 ## 🎯 Model Training
 
@@ -110,39 +97,55 @@ The full pipeline includes:
 
 ## 😡 Sentiment Analysis
 
-- **Models:** RoBERTa (CardiffNLP twitter-roberta-base-sentiment), TextBlob (baseline)
-- **Classes:** Positive, Neutral, Negative
-- **Alert Trigger:** Negative news → Email alert
+- **Model:** RoBERTa (CardiffNLP twitter-roberta-base-sentiment) - PyTorch-based
+- **Output:** Probability scores for [Positive, Negative, Neutral]
+- **Alert Trigger:** Negative sentiment > 95% → Automatic email alert to relevant government department
 
-## 📧 Feedback & Alert System
+## 📧 Alert System
 
 ### Workflow:
-News → Classified → Sentiment → Email
+RSS Feed → Article Extraction → Classification → Sentiment Analysis → Email Alert (if negative > 95%)
 
-### Email Tech:
+### Email Technology:
 Gmail SMTP (Python smtplib)
 
 ### Email Content:
-- Headline
-- Summary
-- Sentiment
-- Source URL
-- Recipients: Mapped government officials
+- Article headline
+- Article URL
+- Category classification
+- Sentiment scores (Positive, Negative, Neutral percentages)
+- Published date
+- News source
+- Article description (first 1000 characters)
+
+### Department Mapping:
+- **Entertainment** → Ministry of Information & Broadcasting
+- **Business** → Ministry of Finance / DPIIT
+- **Politics** → Prime Minister's Office
+- **Judiciary** → Ministry of Law & Justice
+- **Crime** → Ministry of Home Affairs
+- **Culture** → Ministry of Culture
+- **Sports** → Ministry of Youth Affairs and Sports
+- **Science** → Department of Science & Technology
+- **International** → Ministry of External Affairs
+- **Technology** → Ministry of Electronics and IT (MeitY)
 
 ## 🌐 Web Interface
 
-### Frontend:
-- Search headlines
-- Filters: Sentiment, Ministry, Date
-- Clustered news view
-- Sentiment indicators (Red/Yellow/Green)
+### Frontend (Next.js + React + TypeScript):
+- **Latest Posts**: Dynamic news feed with real-time updates
+- **Category Navigation**: Filter news by government departments
+- **Language Toggle**: Switch between English and Hindi (with automatic translation)
+- **News Cards**: Display article title, image, category, sentiment, and emotion
+- **Responsive Design**: Modern UI with Tailwind CSS
+- **Image Gallery**: Static image carousel
 
-### Backend:
-Django REST API with modules for:
-- News fetching
-- Classification
-- Sentiment analysis
-- Email alerts
+### Backend API (Django REST Framework):
+- **GET `/api/health/`**: Health check endpoint
+- **GET `/api/categories/`**: List all available news categories
+- **GET `/api/news/`**: Fetch all news articles (with optional language parameter)
+- **POST `/api/news/filter/`**: Filter news by category and language
+- **Class-Based Views**: RESTful API design following Python best practices
 
 ## 🖼️ Screenshots
 
@@ -156,30 +159,35 @@ Django REST API with modules for:
 
 ![Email Screenshot 2](./email2.jpg)
 
-## 📊 Evaluation Parameters
+## 📊 System Performance
 
 | Parameter              | Value         |
 |------------------------|---------------|
-| Classification Accuracy| 83.2%         |
-| Sentiment Accuracy     | 78.5%         |
-| Clustering Silhouette  | 0.61          |
-| Transcription Accuracy | 92% (English) |
+| Classification Model   | DistilBERT (Fine-tuned) |
+| Sentiment Model        | RoBERTa (CardiffNLP) |
+| Emotion Detection      | DistilBERT-based emotion classifier |
+| Article Extraction     | newspaper3k (automatic) |
+| Translation Support    | Google Translate API (Hindi) |
 | Email Delivery Time    | < 5 seconds   |
-| API Response Time      | ~450 ms       |
-| Frontend Load Time     | < 1.5 seconds |
+| RSS Processing         | Real-time (on API request) |
+| Data Storage           | Excel files (RSS_FullText.xlsx, RSS_Processed.xlsx) |
 
 ## ✅ Results & Discussions
-- Automated news crawling to alert system pipeline completed.
-- Achieved high classification accuracy.
-- Timely email alerts for negative news articles.
-- Web interface allows live news exploration and user feedback.
-- Video news processing and transcription pipeline implemented.
+- **Automated RSS Feed Processing**: Real-time news extraction from major Indian news portals
+- **Full Article Extraction**: Using newspaper3k to get complete article text (not just RSS summaries)
+- **ML-Powered Analysis**: Category classification, sentiment analysis, and emotion detection
+- **Multilingual Support**: Hindi translation for broader accessibility
+- **Alert System**: Automated email notifications to relevant government departments for negative news
+- **Modern Web Interface**: Responsive Next.js frontend with real-time data updates
+- **RESTful API**: Clean, class-based Django REST Framework endpoints
 
 ## 🚀 Future Enhancements
-- Integration with social media (Twitter, Facebook)
-- Graph-based clustering (e.g., Louvain, Leiden)
+- Database integration (PostgreSQL/MySQL) for persistent data storage
+- Scheduled RSS feed processing (cron jobs / Celery)
+- More RSS feed sources
+- Social media integration (Twitter, Facebook)
 - Weekly insight reports for policy-makers
 - Fake news detection module
 - Android/iOS app for field use
-- Voice-controlled admin panel
 - Enhanced multilingual support (Hinglish, regional languages)
+- Caching mechanism for faster API responses

@@ -745,7 +745,8 @@ def fetch_and_process(max_items=20, output_file='RSS_FullText.xlsx'):
         'Source','Title','FullArticle','Link','Published','ImageURL'
     ])
     row = 1
-
+    
+    # reads each feeds
     for source, url in RSS_FEEDS.items():
         feed = feedparser.parse(url)
         taken = 0
