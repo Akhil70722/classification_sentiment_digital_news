@@ -6,7 +6,10 @@ from deep_translator import GoogleTranslator
 
 def JagranChandigarh():
     print("Jagran")
-    workbook=xlsxwriter.Workbook('Jagran_Punjab.xlsx')
+    import os
+    output_dir = 'data/raw'
+    os.makedirs(output_dir, exist_ok=True)
+    workbook=xlsxwriter.Workbook(os.path.join(output_dir, 'Jagran_Punjab.xlsx'))
     worksheet=workbook.add_worksheet()
     row=0
     column=0

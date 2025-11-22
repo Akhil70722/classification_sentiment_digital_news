@@ -5,7 +5,10 @@ from deep_translator import GoogleTranslator
 
 def AajTak():
     print("AajTak")
-    workbook=xlsxwriter.Workbook('AajTak.xlsx')
+    import os
+    output_dir = 'data/raw'
+    os.makedirs(output_dir, exist_ok=True)
+    workbook=xlsxwriter.Workbook(os.path.join(output_dir, 'AajTak.xlsx'))
     worksheet=workbook.add_worksheet()
     row=0
     column=0

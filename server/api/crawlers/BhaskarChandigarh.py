@@ -6,7 +6,10 @@ from deep_translator import GoogleTranslator
 def Bhaskar():
 
     print("Bhaskar Chd")
-    workbook=xlsxwriter.Workbook('Bhaskar_Chandigarh.xlsx')
+    import os
+    output_dir = 'data/raw'
+    os.makedirs(output_dir, exist_ok=True)
+    workbook=xlsxwriter.Workbook(os.path.join(output_dir, 'Bhaskar_Chandigarh.xlsx'))
     worksheet=workbook.add_worksheet()
     row=0
     column=0

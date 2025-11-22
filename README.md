@@ -11,17 +11,26 @@ This project is an end-to-end automated pipeline that:
 - Provides a modern web-based interface for exploration and feedback.
 
 ## 🗞️ Data Collection
-### 🔍 Sources (RSS Feeds):
+### 🔍 Primary Method: RSS Feeds
+The project uses **RSS (Really Simple Syndication) feeds** as the primary and only data collection method. This approach is:
+- ✅ **Legal & Compliant**: RSS feeds are officially provided by news websites
+- ✅ **Reliable**: No blocking or bot detection issues
+- ✅ **Fast**: Instant parsing without browser automation
+- ✅ **Stable**: Standardized format that rarely changes
+
+### 📡 RSS Feed Sources:
 - **News18 Latest**: Latest news feed
 - **News18 India**: India-specific news
 - **The Hindu**: National news
 - **Times of India (TOI)**: Top stories
 
-### 🛠️ Web Scraping Tools:
+### 🛠️ Data Collection Tools:
 - **feedparser**: For parsing RSS feed XML data
 - **newspaper3k**: For extracting full article text from URLs (automatically downloads, parses, and extracts clean content)
-- **BeautifulSoup**: Used internally by newspaper3k for HTML parsing
+- **BeautifulSoup**: Used internally by newspaper3k for HTML parsing (not used as a standalone scraper)
 - **Threading**: For background processing of RSS feeds
+
+> **Note**: This project does **NOT** use browser automation tools (like Selenium) to avoid blocking, legal issues, and maintenance overhead. All data is collected through official RSS feeds.
 
 ### 📄 Data Fields Extracted:
 - Headline
@@ -37,8 +46,8 @@ This project is an end-to-end automated pipeline that:
 
 ## ⚙️ Description of Work Done
 The full pipeline includes:
-- **RSS Feed Processing** using feedparser
-- **Article Extraction** using newspaper3k (automatically downloads and parses full article text)
+- **RSS Feed Processing** using feedparser (primary data collection method)
+- **Article Extraction** using newspaper3k (automatically downloads and parses full article text from RSS feed URLs)
 - **Text Preprocessing** using SpaCy, NLTK, contractions library
 - **Category Classification** using fine-tuned DistilBERT model
 - **Sentiment Analysis** with RoBERTa (CardiffNLP twitter-roberta-base-sentiment)
@@ -173,8 +182,9 @@ Gmail SMTP (Python smtplib)
 | Data Storage           | Excel files (RSS_FullText.xlsx, RSS_Processed.xlsx) |
 
 ## ✅ Results & Discussions
-- **Automated RSS Feed Processing**: Real-time news extraction from major Indian news portals
+- **Automated RSS Feed Processing**: Real-time news extraction from major Indian news portals using official RSS feeds (no browser automation)
 - **Full Article Extraction**: Using newspaper3k to get complete article text (not just RSS summaries)
+- **Legal & Compliant Data Collection**: RSS feeds ensure compliance with website terms of service and avoid blocking issues
 - **ML-Powered Analysis**: Category classification, sentiment analysis, and emotion detection
 - **Multilingual Support**: Hindi translation for broader accessibility
 - **Alert System**: Automated email notifications to relevant government departments for negative news
@@ -184,10 +194,11 @@ Gmail SMTP (Python smtplib)
 ## 🚀 Future Enhancements
 - Database integration (PostgreSQL/MySQL) for persistent data storage
 - Scheduled RSS feed processing (cron jobs / Celery)
-- More RSS feed sources
-- Social media integration (Twitter, Facebook)
+- More RSS feed sources (Indian Express, Zee News, Aaj Tak, etc.)
+- Social media integration (Twitter, Facebook) via official APIs
 - Weekly insight reports for policy-makers
 - Fake news detection module
 - Android/iOS app for field use
 - Enhanced multilingual support (Hinglish, regional languages)
 - Caching mechanism for faster API responses
+- RSS feed health monitoring and automatic failover

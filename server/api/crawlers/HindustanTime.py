@@ -4,7 +4,10 @@ from bs4 import BeautifulSoup
 def Hindustan():
 
     print("Hindustan Chd")
-    workbook=xlsxwriter.Workbook('HindustanTime_Chandigarh.xlsx')
+    import os
+    output_dir = 'data/raw'
+    os.makedirs(output_dir, exist_ok=True)
+    workbook=xlsxwriter.Workbook(os.path.join(output_dir, 'HindustanTime_Chandigarh.xlsx'))
     worksheet=workbook.add_worksheet()
     row=0
     column=0

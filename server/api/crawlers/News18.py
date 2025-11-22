@@ -5,7 +5,10 @@ from bs4 import BeautifulSoup
 
 def News18():
     print("News 18")
-    workbook=xlsxwriter.Workbook('News18.xlsx')
+    import os
+    output_dir = 'data/raw'
+    os.makedirs(output_dir, exist_ok=True)
+    workbook=xlsxwriter.Workbook(os.path.join(output_dir, 'News18.xlsx'))
     worksheet=workbook.add_worksheet()
     row=0
     column=0

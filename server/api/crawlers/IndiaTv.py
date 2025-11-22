@@ -5,7 +5,10 @@ from bs4 import BeautifulSoup
 
 def IndiaTv():
     print("India Tv")
-    workbook=xlsxwriter.Workbook('IndiaTv.xlsx')
+    import os
+    output_dir = 'data/raw'
+    os.makedirs(output_dir, exist_ok=True)
+    workbook=xlsxwriter.Workbook(os.path.join(output_dir, 'IndiaTv.xlsx'))
     worksheet=workbook.add_worksheet()
     row=0
     column=0

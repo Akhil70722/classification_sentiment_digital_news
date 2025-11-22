@@ -1,7 +1,14 @@
+"""
+URL configuration for API endpoints.
+
+This module defines all API routes for the News Intelligence & Alert System.
+"""
+
 from django.contrib import admin
 from django.urls import path, include
 from api import views
 
+# URL patterns for API endpoints
 urlpatterns = [
     # RESTful API endpoints using class-based views
     path('api/health/', views.HealthCheckView.as_view(), name='health_check'),

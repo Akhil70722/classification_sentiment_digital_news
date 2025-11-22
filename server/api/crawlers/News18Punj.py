@@ -5,7 +5,10 @@ from deep_translator import GoogleTranslator
 
 def News18Punj():
     print("New 18 Punjab")
-    workbook=xlsxwriter.Workbook('News18_Punjab.xlsx')
+    import os
+    output_dir = 'data/raw'
+    os.makedirs(output_dir, exist_ok=True)
+    workbook=xlsxwriter.Workbook(os.path.join(output_dir, 'News18_Punjab.xlsx'))
     worksheet=workbook.add_worksheet()
     row=0
     column=0
