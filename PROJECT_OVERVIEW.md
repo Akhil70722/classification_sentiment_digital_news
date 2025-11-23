@@ -66,7 +66,13 @@ This is an **automated news monitoring and alert system** designed for governmen
 
 ## 1️⃣ DATA COLLECTION - Where News Comes From
 
-### **Method 1: RSS Feeds (Primary & Recommended)**
+### **Dual Method: RSS Feeds + Web Crawlers (Both Run Simultaneously)**
+
+The system uses **both RSS feeds and web crawlers simultaneously** (not as fallback) for comprehensive news coverage.
+
+---
+
+### **Method 1: RSS Feeds (Primary)**
 
 **Technology Stack:**
 - **feedparser**: Python library for parsing RSS/Atom feeds
@@ -98,6 +104,66 @@ This is an **automated news monitoring and alert system** designed for governmen
    - Title (Headline)
    - FullArticle (Complete article text)
    - Link (Article URL)
+   - Published date
+   - Image URL
+
+---
+
+### **Method 2: Web Crawlers (Secondary - Runs Simultaneously)**
+
+**Technology Stack:**
+- **BeautifulSoup**: HTML parsing and content extraction
+- **requests**: HTTP requests to news websites
+- **Threading with Timeout**: Prevents crawlers from hanging
+- **Robust Selectors**: Multiple fallback HTML selectors for reliability
+
+**Crawler Sources** (10+ news sources):
+- News18 (English)
+- News18 Punjab (Punjabi)
+- IndiaToday
+- IndiaToday Chandigarh
+- AajTak
+- IndiaTV
+- Hindustan Times (Chandigarh)
+- Jagran (Punjab)
+- Bhaskar (Chandigarh)
+- Tribune (Chandigarh)
+
+**How It Works:**
+1. **Crawler Functions** (in `server/api/crawlers/*.py`):
+   - Visit news website homepages
+   - Extract article links
+   - Visit each article URL
+   - Extract heading and body content using multiple HTML selectors
+   - Validate content (minimum paragraphs, length checks)
+   - Save to `data/raw/{SourceName}.xlsx`
+
+2. **Processing Flow** (`_process_crawler_data()` function):
+   - Runs crawler function with timeout (5 minutes max)
+   - Reads crawler output from `data/raw/*.xlsx`
+   - Merges into main `data/rss/RSS_FullText.xlsx`
+   - Handles errors gracefully (continues if one crawler fails)
+
+3. **Data Extracted:**
+   - Source (News18_Crawler, IndiaToday_Crawler, etc.)
+   - Heading (Article title)
+   - Body (Full article text)
+   - URL (Article link)
+
+**Content Validation:**
+- Minimum 3 paragraphs per article
+- Minimum 20 characters per paragraph
+- Minimum 100 characters total content
+- Minimum 10 characters for heading
+
+---
+
+### **Data Merging:**
+
+Both RSS feeds and crawlers write to the **same Excel file** (`data/rss/RSS_FullText.xlsx`):
+- RSS articles: Written first
+- Crawler articles: Appended after RSS articles
+- All articles are then processed together for sentiment analysis
    - Published (Publication date)
    - ImageURL (Article image)
 
@@ -152,41 +218,55 @@ This is an **automated news monitoring and alert system** designed for governmen
 
 ## 2️⃣ DATA STORAGE - Where Data is Stored
 
-### **Organized Folder Structure:**
+### **Current Active Folder Structure (data/):**
 
 ```
-data/
-├── raw/                    # Raw scraped news (from web scrapers)
-│   ├── IndiaToday.xlsx
-│   ├── News18.xlsx
-│   ├── IndiaTv.xlsx
-│   └── Final_Prepped_Data.xlsx
+server/
+├── data/                    ← ACTIVE (new data always goes here)
+│   ├── raw/                 ← Crawler outputs (temporary)
+│   │   ├── News18.xlsx
+│   │   ├── IndiaToday.xlsx
+│   │   ├── IndiaTv.xlsx
+│   │   └── ... (10+ news sources)
+│   └── rss/                 ← RSS & processed data (permanent)
+│       ├── RSS_FullText.xlsx   ← Merged data from RSS + crawlers
+│       └── RSS_Processed.xlsx  ← Sentiment analysis results
 │
-├── processed/              # Preprocessed datasets
-│   ├── dataset.csv         # Main dataset (11,583 rows)
-│   └── final_dataset_Preprocessed.csv
-│
-├── embeddings/             # Generated embeddings (for clustering)
-│   ├── embeddings_headings.npy
-│   └── embeddings_final_dataset_Preprocessed.npy
-│
-├── results/                # Analysis results
-│   ├── labelled.csv        # K-Means clustering results
-│   └── news_data_with_sentiment_output_file.csv
-│
-└── rss/                    # RSS feed data
-    ├── RSS_FullText.xlsx   # Full articles from RSS
-    ├── RSS_News.xlsx
-    └── RSS_Processed.xlsx  # After sentiment analysis
+└── data1/                   ← ARCHIVE (old data preserved here)
+    └── archive_YYYYMMDD_HHMMSS/
+        ├── raw/             ← Archived crawler outputs
+        └── rss/             ← Archived RSS data
 ```
+
+### **Automatic Data Archiving:**
+
+**How It Works:**
+1. **Before each API run**: Old data from `data/` is automatically archived to `data1/archive_TIMESTAMP/`
+2. **Fresh start**: `data/` folder is cleaned for new data collection
+3. **No data loss**: All historical data is preserved with timestamps
+4. **Automatic**: No manual intervention needed
+
+**Archive Function:**
+- Moves `data/raw/` → `data1/archive_TIMESTAMP/raw/`
+- Moves `data/rss/` → `data1/archive_TIMESTAMP/rss/`
+- Preserves folder structure
+- Creates timestamped folders (e.g., `archive_20251123_163651/`)
 
 ### **Data Flow:**
 
-1. **Raw Data** → `data/raw/` (from web scrapers)
-2. **RSS Data** → `data/rss/` (from RSS feed processing)
-3. **Preprocessed** → `data/processed/` (after cleaning)
-4. **Embeddings** → `data/embeddings/` (for ML models)
-5. **Results** → `data/results/` (final analysis outputs)
+1. **Archive**: Old `data/` → `data1/archive_TIMESTAMP/` (automatic)
+2. **Collect**: RSS feeds + Crawlers → `data/rss/RSS_FullText.xlsx` (merged)
+3. **Analyze**: Sentiment analysis → `data/rss/RSS_Processed.xlsx`
+4. **Display**: Frontend reads from API (which reads from `RSS_Processed.xlsx`)
+
+### **Legacy Folders (data1/ - Not Used by Current System):**
+
+The following folders exist in `data1/` but are **NOT** created by the current Django application:
+- `data1/processed/` - From old Jupyter notebook preprocessing (not used)
+- `data1/embeddings/` - From old clustering notebooks (not used)
+- `data1/results/` - From old analysis notebooks (not used)
+
+**Note**: These folders are from model training phase. The current production system only uses `data/raw/` and `data/rss/`.
 
 ---
 
@@ -705,22 +785,27 @@ Frontend: Displays news cards
 ## 📝 SUMMARY
 
 ### **Data Sources:**
-1. **RSS Feeds** (Primary): News18, TheHindu, TOI
-2. **Web Scrapers** (Legacy): IndiaToday, News18, IndiaTv, etc.
+1. **RSS Feeds** (Primary): News18, TheHindu, TOI (4 sources)
+2. **Web Crawlers** (Secondary): News18, IndiaToday, AajTak, IndiaTV, Hindustan Times, Jagran, Bhaskar, Tribune, and regional variants (10+ sources)
+3. **Both run simultaneously** and data is merged into a single dataset
 
 ### **Data Storage:**
-- `data/rss/` - RSS feed data
-- `data/raw/` - Scraped data
-- `data/processed/` - Preprocessed data
-- `data/embeddings/` - ML embeddings
-- `data/results/` - Analysis results
+- `data/rss/` - RSS feed data + processed results (ACTIVE)
+- `data/raw/` - Crawler outputs (temporary, merged into RSS)
+- `data1/archive_*/` - Archived historical data (automatic)
 
 ### **Processing Pipeline:**
 ```
-RSS/Scraper → Preprocessing → Classification → Sentiment → Email Alert
-                                    ↓
-                              Frontend Display
+Archive Old Data → RSS + Crawlers → Merge → Preprocessing → Classification → Sentiment → Email Alert
+     (data1/)         (data/raw/)    (RSS_FullText.xlsx)                          ↓
+                                                                          Frontend Display
+                                                                          (RSS_Processed.xlsx)
 ```
+
+### **JSON Sanitization:**
+- **Automatic NaN/INF handling**: All sentiment scores and numeric values are sanitized
+- **JSON-safe responses**: All API responses are validated for JSON compatibility
+- **Frontend compatibility**: No parsing errors due to invalid values
 
 ### **Key Features:**
 1. ✅ Automated news collection (RSS feeds)

@@ -11,26 +11,36 @@ This project is an end-to-end automated pipeline that:
 - Provides a modern web-based interface for exploration and feedback.
 
 ## 🗞️ Data Collection
-### 🔍 Primary Method: RSS Feeds
-The project uses **RSS (Really Simple Syndication) feeds** as the primary and only data collection method. This approach is:
+### 🔍 Dual Method: RSS Feeds + Web Crawlers
+The project uses **both RSS feeds and web crawlers simultaneously** for comprehensive data collection:
+
+#### 📡 RSS Feeds (Primary Method)
 - ✅ **Legal & Compliant**: RSS feeds are officially provided by news websites
 - ✅ **Reliable**: No blocking or bot detection issues
 - ✅ **Fast**: Instant parsing without browser automation
 - ✅ **Stable**: Standardized format that rarely changes
 
-### 📡 RSS Feed Sources:
+**RSS Feed Sources:**
 - **News18 Latest**: Latest news feed
 - **News18 India**: India-specific news
 - **The Hindu**: National news
 - **Times of India (TOI)**: Top stories
 
+#### 🕷️ Web Crawlers (Secondary Method)
+- **10+ News Sources**: News18, IndiaToday, AajTak, IndiaTV, Hindustan Times, Jagran, Bhaskar, Tribune, and more
+- **Regional Coverage**: Includes Punjab/Chandigarh-specific news sources
+- **Robust Selectors**: Multiple fallback HTML selectors for reliable extraction
+- **Content Validation**: Ensures only valid articles are scraped
+
 ### 🛠️ Data Collection Tools:
 - **feedparser**: For parsing RSS feed XML data
-- **newspaper3k**: For extracting full article text from URLs (automatically downloads, parses, and extracts clean content)
-- **BeautifulSoup**: Used internally by newspaper3k for HTML parsing (not used as a standalone scraper)
-- **Threading**: For background processing of RSS feeds
+- **newspaper3k**: For extracting full article text from URLs
+- **BeautifulSoup**: For web scraping and HTML parsing
+- **requests**: For HTTP requests to news websites
+- **Threading**: For concurrent processing of RSS feeds and crawlers
+- **Timeout Protection**: Prevents crawlers from hanging indefinitely
 
-> **Note**: This project does **NOT** use browser automation tools (like Selenium) to avoid blocking, legal issues, and maintenance overhead. All data is collected through official RSS feeds.
+> **Note**: Both RSS feeds and crawlers run simultaneously (not as fallback). Data from both sources is merged into a single dataset for analysis.
 
 ### 📄 Data Fields Extracted:
 - Headline
@@ -168,6 +178,38 @@ Gmail SMTP (Python smtplib)
 
 ![Email Screenshot 2](./email2.jpg)
 
+## 📁 Data Storage & Archiving
+
+### Folder Structure:
+```
+server/
+├── data/                    ← ACTIVE (new data always goes here)
+│   ├── raw/                 ← Crawler outputs (temporary)
+│   │   ├── News18.xlsx
+│   │   ├── IndiaToday.xlsx
+│   │   └── ...
+│   └── rss/                 ← RSS & processed data (permanent)
+│       ├── RSS_FullText.xlsx   ← Merged data from RSS + crawlers
+│       └── RSS_Processed.xlsx  ← Sentiment analysis results
+│
+└── data1/                   ← ARCHIVE (old data preserved here)
+    └── archive_YYYYMMDD_HHMMSS/
+        ├── raw/
+        └── rss/
+```
+
+### Automatic Data Archiving:
+- **Old data preservation**: Every API run automatically archives old data to `data1/archive_TIMESTAMP/`
+- **Fresh start**: `data/` folder is cleaned before new data collection
+- **No data loss**: All historical data is preserved with timestamps
+- **Automatic**: No manual intervention needed
+
+### Data Flow:
+1. **Archive**: Old `data/` → `data1/archive_TIMESTAMP/`
+2. **Collect**: RSS feeds + Crawlers → `data/rss/RSS_FullText.xlsx`
+3. **Analyze**: Sentiment analysis → `data/rss/RSS_Processed.xlsx`
+4. **Display**: Frontend reads from API (which reads from `RSS_Processed.xlsx`)
+
 ## 📊 System Performance
 
 | Parameter              | Value         |
@@ -178,18 +220,23 @@ Gmail SMTP (Python smtplib)
 | Article Extraction     | newspaper3k (automatic) |
 | Translation Support    | Google Translate API (Hindi) |
 | Email Delivery Time    | < 5 seconds   |
-| RSS Processing         | Real-time (on API request) |
+| Data Collection        | Real-time (RSS + Crawlers on API request) |
 | Data Storage           | Excel files (RSS_FullText.xlsx, RSS_Processed.xlsx) |
+| Data Archiving         | Automatic (timestamped archives in data1/) |
+| JSON Sanitization      | Automatic (NaN/INF handling) |
 
 ## ✅ Results & Discussions
-- **Automated RSS Feed Processing**: Real-time news extraction from major Indian news portals using official RSS feeds (no browser automation)
+- **Dual Data Collection**: RSS feeds + Web crawlers working simultaneously for comprehensive coverage
+- **Automated RSS Feed Processing**: Real-time news extraction from major Indian news portals using official RSS feeds
+- **Web Crawler Integration**: 10+ news sources with robust HTML selectors and content validation
 - **Full Article Extraction**: Using newspaper3k to get complete article text (not just RSS summaries)
-- **Legal & Compliant Data Collection**: RSS feeds ensure compliance with website terms of service and avoid blocking issues
+- **Automatic Data Archiving**: Old data preserved in timestamped archives, fresh data collection every run
+- **JSON Sanitization**: Automatic handling of NaN/INF values for frontend compatibility
 - **ML-Powered Analysis**: Category classification, sentiment analysis, and emotion detection
 - **Multilingual Support**: Hindi translation for broader accessibility
 - **Alert System**: Automated email notifications to relevant government departments for negative news
 - **Modern Web Interface**: Responsive Next.js frontend with real-time data updates
-- **RESTful API**: Clean, class-based Django REST Framework endpoints
+- **RESTful API**: Clean, class-based Django REST Framework endpoints with error handling
 
 ## 🚀 Future Enhancements
 - Database integration (PostgreSQL/MySQL) for persistent data storage

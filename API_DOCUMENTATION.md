@@ -224,5 +224,24 @@ No changes needed in the frontend code - it's already updated!
 
 ---
 
+## 🔧 Technical Details
+
+### Data Archiving:
+- Old data is automatically archived to `data1/archive_TIMESTAMP/` before each API call
+- Fresh data is collected in `data/` folder
+- No data loss - all historical data is preserved
+
+### JSON Sanitization:
+- All API responses are automatically sanitized for NaN/INF values
+- Sentiment scores are validated before JSON serialization
+- Frontend-compatible JSON format guaranteed
+
+### Data Sources:
+- **RSS Feeds**: News18, TheHindu, TOI (primary)
+- **Web Crawlers**: 10+ news sources including regional (secondary)
+- Both sources run simultaneously and are merged into a single dataset
+
+---
+
 **Last Updated:** November 2025
 

@@ -207,6 +207,14 @@ python -c "import nltk; nltk.download('stopwords'); nltk.download('punkt')"
 
 **Solution:** This is normal on first run. Models are cached, so subsequent runs are faster.
 
+### Issue: "JSON parsing error: NaN values"
+
+**Solution:** This has been fixed. The system now automatically sanitizes all NaN/INF values before sending JSON responses. If you still see this error, restart the server to load the latest code.
+
+### Issue: "Data folder keeps growing"
+
+**Solution:** This is normal. The system automatically archives old data to `data1/archive_TIMESTAMP/` before each run. Old data is preserved but not used for new analysis.
+
 ---
 
 ## 📁 Important Files to Check
