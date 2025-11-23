@@ -41,8 +41,6 @@ def Bhaskar():
                     continue
         while(urls_to_visit and count<20):
                 urltoVisit=urls_to_visit[0]
-                print(urltoVisit)
-                print(count)
                 urls_to_visit.pop(0)
             
                 if(urltoVisit[0]=='h' and (["tags","tag", "livetv", "video"] not in urltoVisit.split("/"))):
@@ -64,33 +62,62 @@ def Bhaskar():
                                 finally:
                                     continue
                             
-                            if(soup.find('div',{'class':'a88a1c42'}) and (soup.find('html',{'lang':'hi'}))):
-                                heading_title=soup.find('div',{'class':'a88a1c42'}).find('h1').text
-                                print("Yes")
-                                if(soup.find('p', {'class':'c4fb714d'})):
-                                    print("Yes")
-                                    
-                                    
-                                    heading_desc=soup.find('p', {'class':'c4fb714d'}).text
-                                        
-                                    updated=soup.find('span',{'class':'c49a6b85'}).text
-                                    print(updated)
-                                    result=GoogleTranslator(source='auto', target='en').translate(heading_desc)
-                                    headline=GoogleTranslator(source='auto', target='en').translate(heading_title)
-                                    updatedEng=GoogleTranslator(source='auto', target='en').translate(updated)
+                            # Find article heading - use any h1 tag
+                            heading_title = soup.find('h1')
                             
-                                    print(result)
-                                    print(headline)
-                        
-                        
-                                    worksheet.write(row,column,headline)
-                                    worksheet.write(row,column+1,result)
-                                    worksheet.write(row,column+2,updatedEng)
-                                    worksheet.write(row,column+3,urltoVisit)
-                                
-                                    row+=1
+                            # Find article content - look for article tag or div with most paragraphs
+                            content_div = None
+                            article_tag = soup.find('article')
+                            if article_tag:
+                                content_div = article_tag
+                            else:
+                                all_divs = soup.findAll('div')
+                                max_paragraphs = 0
+                                for div in all_divs:
+                                    paragraphs = div.findAll('p')
+                                    if len(paragraphs) > max_paragraphs and len(paragraphs) >= 3:
+                                        max_paragraphs = len(paragraphs)
+                                        content_div = div
+                            
+                            if heading_title and content_div:
+                                paragraphs = content_div.findAll('p')
+                                if len(paragraphs) >= 3:
+                                    news = ""
+                                    for text in paragraphs:
+                                        text_content = text.text.strip()
+                                        if text_content and len(text_content) > 20:
+                                            news += text_content + " "
                                     
-                                    count+=1
+                                    if len(news.strip()) > 100:
+                                        heading_text = heading_title.text.strip()
+                                        if heading_text and len(heading_text) > 10:
+                                            try:
+                                                result = GoogleTranslator(source='auto', target='en').translate(news[0:2200])
+                                                headline = GoogleTranslator(source='auto', target='en').translate(heading_text)
+                                                
+                                                # Try to get date
+                                                updated = ""
+                                                time_tag = soup.find('time')
+                                                if time_tag:
+                                                    updated = time_tag.text.strip()
+                                                else:
+                                                    date_span = soup.find('span', {'class':'c49a6b85'})
+                                                    if date_span:
+                                                        updated = date_span.text.strip()
+                                                        updatedEng = GoogleTranslator(source='auto', target='en').translate(updated)
+                                                        updated = updatedEng
+                                                
+                                                worksheet.write(row, column, headline)
+                                                worksheet.write(row, column+1, result)
+                                                worksheet.write(row, column+2, updated)
+                                                worksheet.write(row, column+3, urltoVisit)
+                                            
+                                                row += 1
+                                                count += 1
+                                                print(f"  ✓ Found article {count}: {headline[:50]}...")
+                                            except Exception as e:
+                                                print(f"  ⚠ Translation failed: {e}")
+                                                continue
                     finally:
                         continue        
             

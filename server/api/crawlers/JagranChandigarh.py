@@ -45,8 +45,6 @@ def JagranChandigarh():
 
         while(urls_to_visit and count<100):
                 urltoVisit=urls_to_visit[0]
-                print(count)
-                print(urltoVisit)
                 urls_to_visit.pop(0)
                 if(urltoVisit[0]=='h' and (["tags","tag", "livetv", "videos", "web-stories", "astrology"] not in urltoVisit.split("/"))):
                     try:
@@ -67,45 +65,63 @@ def JagranChandigarh():
                                 finally:
                                     continue
                             
-                            if(soup.find('h1') and (soup.find('html',{'lang':'hi'}))):
-                                heading_title=soup.find('h1').text
-                                print("Yes")
-                                
-                        
-                                
-                                if(soup.find('div', {'class':'articlecontent'}).findAll('p')):
-                                    
-                                    
-                                    heading_desc=soup.find('div', {'class':'articlecontent'}).findAll('p')
-                                    news=""
-                                    print("Yes")
-                                    for text in heading_desc:
-                                        news+=text.text
-                                    
-                                    news=news.replace("\xa0","")
-                                    news=news.replace("\n","")
-                                    heading_title=heading_title.replace("\xa0","")
-                                    heading_title=heading_title.replace("\n","")
+                            # Find article heading - use any h1 tag
+                            heading_title = soup.find('h1')
                             
+                            # Find article content - look for article tag or div with most paragraphs
+                            content_div = None
+                            article_tag = soup.find('article')
+                            if article_tag:
+                                content_div = article_tag
+                            else:
+                                all_divs = soup.findAll('div')
+                                max_paragraphs = 0
+                                for div in all_divs:
+                                    paragraphs = div.findAll('p')
+                                    if len(paragraphs) > max_paragraphs and len(paragraphs) >= 3:
+                                        max_paragraphs = len(paragraphs)
+                                        content_div = div
+                            
+                            if heading_title and content_div:
+                                paragraphs = content_div.findAll('p')
+                                if len(paragraphs) >= 3:
+                                    news = ""
+                                    for text in paragraphs:
+                                        text_content = text.text.strip()
+                                        if text_content and len(text_content) > 20:
+                                            news += text_content + " "
                                     
-                                    result=GoogleTranslator(source='auto', target='en').translate(news[0:2200])
-                                    headline=GoogleTranslator(source='auto', target='en').translate(heading_title)
-                                    updated=soup.findAll('span',{'class':'ArticleDetail_ArticleDetail__date__hDHi9'})
-                                    print(result)
-                                    print(headline)
-                                    print(updated[1].text)
-                                    
-                                
-                                    worksheet.write(row,column,headline)
-                                    worksheet.write(row,column+1,result)
-                                    worksheet.write(row,column+2,updated[1].text)
-                                    worksheet.write(row,column+3,urltoVisit)
-                                    
-                               
-                                
-                                    row+=1
-                                    
-                                    count+=1
+                                    if len(news.strip()) > 100:
+                                        heading_text = heading_title.text.strip()
+                                        if heading_text and len(heading_text) > 10:
+                                            news = news.replace("\xa0", " ").replace("\n", " ").strip()
+                                            heading_text = heading_text.replace("\xa0", " ").replace("\n", " ").strip()
+                                            
+                                            try:
+                                                result = GoogleTranslator(source='auto', target='en').translate(news[0:2200])
+                                                headline = GoogleTranslator(source='auto', target='en').translate(heading_text)
+                                                
+                                                # Try to get date
+                                                updated = ""
+                                                date_spans = soup.findAll('span', {'class':'ArticleDetail_ArticleDetail__date__hDHi9'})
+                                                if date_spans and len(date_spans) > 1:
+                                                    updated = date_spans[1].text.strip()
+                                                else:
+                                                    time_tag = soup.find('time')
+                                                    if time_tag:
+                                                        updated = time_tag.text.strip()
+                                                
+                                                worksheet.write(row, column, headline)
+                                                worksheet.write(row, column+1, result)
+                                                worksheet.write(row, column+2, updated)
+                                                worksheet.write(row, column+3, urltoVisit)
+                                            
+                                                row += 1
+                                                count += 1
+                                                print(f"  ✓ Found article {count}: {headline[:50]}...")
+                                            except Exception as e:
+                                                print(f"  ⚠ Translation failed: {e}")
+                                                continue
                     except Exception as e:
                         print(e)
                     

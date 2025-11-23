@@ -45,10 +45,7 @@ def News18Punj():
 
         while(urls_to_visit and count<20):
                 urltoVisit=urls_to_visit[0]
-                
                 urls_to_visit.pop(0)
-                print(count)
-                print(urltoVisit)
                 if(urltoVisit[0]=='h' and (["tags","tag", "livetv", "videos", "web-stories", "astrology"] not in urltoVisit.split("/"))):
                     try:
                         
@@ -69,37 +66,59 @@ def News18Punj():
                                 finally:
                                     continue
                             
-                            if(soup.find('h1', { 'class':"tphd"}) and (soup.find('html',{'lang':'pa'}))):
-                                
-                                heading_title=soup.find('h1', { 'class':"tphd"})
-                                heading_title=heading_title.text
-                                print(heading_title)
-                                if(soup.find('div', {'id':'main-content'}).findAll('p')):
+                            # Find article heading - use any h1 tag
+                            heading_title = soup.find('h1')
+                            
+                            # Find article content - look for article tag or div with most paragraphs
+                            content_div = None
+                            article_tag = soup.find('article')
+                            if article_tag:
+                                content_div = article_tag
+                            else:
+                                main_content = soup.find('div', {'id':'main-content'})
+                                if main_content:
+                                    content_div = main_content
+                                else:
+                                    all_divs = soup.findAll('div')
+                                    max_paragraphs = 0
+                                    for div in all_divs:
+                                        paragraphs = div.findAll('p')
+                                        if len(paragraphs) > max_paragraphs and len(paragraphs) >= 3:
+                                            max_paragraphs = len(paragraphs)
+                                            content_div = div
+                            
+                            if heading_title and content_div:
+                                paragraphs = content_div.findAll('p')
+                                if len(paragraphs) >= 3:
+                                    news = ""
+                                    for text in paragraphs:
+                                        text_content = text.text.strip()
+                                        if text_content and len(text_content) > 20:
+                                            news += text_content + " "
                                     
-                                
-                                    heading_desc=soup.find('div', {'id':'main-content'}).findAll('p')
-                                    print("yes")
-                                    news=""
-                                    for text in heading_desc:
-                                
-                                        news+=text.text
-                                    news=news.replace("\xa0","")
-                                    news=news.replace("\n","")
-                                    heading_title=heading_title.replace("\xa0","")
-                                    heading_title=heading_title.replace("\n","")
-                                    result=GoogleTranslator(source='auto', target='en').translate(news[0:2200])
-                                    headline=GoogleTranslator(source='auto', target='en').translate(heading_title)
-                                    print(result)
-                                    print(headline)
-                                    
-                                    worksheet.write(row,column,headline)
-                                    worksheet.write(row,column+1,result)
-                                    worksheet.write(row,column+2,urltoVisit.split("/")[3])
-                                    worksheet.write(row,column+3,urltoVisit)
-                                
-                                    row+=1
-                                
-                                    count+=1
+                                    if len(news.strip()) > 100:
+                                        heading_text = heading_title.text.strip()
+                                        if heading_text and len(heading_text) > 10:
+                                            news = news.replace("\xa0", " ").replace("\n", " ").strip()
+                                            heading_text = heading_text.replace("\xa0", " ").replace("\n", " ").strip()
+                                            
+                                            try:
+                                                result = GoogleTranslator(source='auto', target='en').translate(news[0:2200])
+                                                headline = GoogleTranslator(source='auto', target='en').translate(heading_text)
+                                                
+                                                category = urltoVisit.split("/")[3] if len(urltoVisit.split("/")) > 3 else "news"
+                                                
+                                                worksheet.write(row, column, headline)
+                                                worksheet.write(row, column+1, result)
+                                                worksheet.write(row, column+2, category)
+                                                worksheet.write(row, column+3, urltoVisit)
+                                            
+                                                row += 1
+                                                count += 1
+                                                print(f"  ✓ Found article {count}: {headline[:50]}...")
+                                            except Exception as e:
+                                                print(f"  ⚠ Translation failed: {e}")
+                                                continue
                     finally:
                         continue        
             

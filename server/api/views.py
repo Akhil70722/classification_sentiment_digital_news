@@ -11,9 +11,12 @@ This module handles:
 # Standard library imports
 import os
 import re
+import shutil
 import smtplib
 import threading
 import traceback
+import math
+from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -227,6 +230,33 @@ def preprocess(text):
     return ' '.join(w for w in lemmas if w not in stopwords)
 
 
+def sanitize_for_json(obj):
+    """
+    Recursively sanitize Python objects to be JSON-safe.
+    Replaces NaN, INF, and None values with appropriate defaults.
+    
+    Args:
+        obj: Any Python object (dict, list, scalar)
+        
+    Returns:
+        JSON-safe version of the object
+    """
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(item) for item in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return 0.0
+        return obj
+    elif pd.isna(obj) if hasattr(pd, 'isna') else (obj is None or (isinstance(obj, float) and math.isnan(obj))):
+        return None
+    elif obj is None:
+        return None
+    else:
+        return obj
+
+
 def predict_sentiment(text):
     """
     Predict sentiment of text using RoBERTa model.
@@ -240,11 +270,13 @@ def predict_sentiment(text):
     inp = sent_tok(text[:514], return_tensors='pt')
     out = sent_model(**inp)
     scores = torch.softmax(out.logits[0], dim=0)
-    return [
+    result = [
         scores[_label_map['positive']].item(),
         scores[_label_map['negative']].item(),
         scores[_label_map['neutral']].item()
     ]
+    # Sanitize NaN/INF values
+    return [0.0 if (math.isnan(x) or math.isinf(x)) else x for x in result]
 
 
 def predict_category(text):
@@ -389,36 +421,300 @@ def send_email(to_emails, subject, body):
         return False
 
 
-def fetch_and_process(max_items=50, output_file='RSS_FullText.xlsx'):
+def _process_crawler_data(crawler_file_name, function_name, source_name, ws, row, max_items=50, timeout=300):
     """
-    Fetch articles from RSS feeds and extract full text.
+    Process data from crawler Excel files and add to main worksheet.
     
     Args:
-        max_items: Maximum articles per feed (default: 50)
+        crawler_file_name: Name of the crawler file (without .py)
+        function_name: Name of the function to call in the crawler file
+        source_name: Source name to use in output
+        ws: Worksheet to write to
+        row: Current row number
+        max_items: Maximum articles to process
+        timeout: Maximum time in seconds to wait for crawler (default: 300 = 5 minutes)
+        
+    Returns:
+        Updated row number
+    """
+    try:
+        # Import crawler dynamically
+        crawler_module = __import__(f'api.crawlers.{crawler_file_name}', fromlist=[function_name])
+        crawler_func = getattr(crawler_module, function_name)
+        
+        # Run crawler to generate Excel file with timeout using threading
+        print(f"[CRAWLER] Running {crawler_file_name} (timeout: {timeout}s)...")
+        
+        import threading
+        crawler_exception = [None]
+        
+        def run_crawler():
+            try:
+                crawler_func()
+            except Exception as e:
+                crawler_exception[0] = e
+        
+        # Start crawler in a thread
+        crawler_thread = threading.Thread(target=run_crawler)
+        crawler_thread.daemon = True
+        crawler_thread.start()
+        crawler_thread.join(timeout=timeout)
+        
+        # Check if thread is still running (timed out)
+        if crawler_thread.is_alive():
+            print(f"[WARNING] {crawler_file_name} timed out after {timeout}s, skipping output")
+            return row  # Return early without processing output
+        
+        # Check for exceptions
+        if crawler_exception[0]:
+            raise crawler_exception[0]
+        
+        # Read crawler output - check possible file names
+        # Mapping of crawler file names to their actual output filenames
+        OUTPUT_FILE_MAP = {
+            'News18': 'News18.xlsx',
+            'News18Punj': 'News18_Punjab.xlsx',
+            'IndiaToday': 'IndiaToday.xlsx',
+            'IndiaToday_Chandigarh': 'IndiaToday_Chandigarh.xlsx',
+            'AajTak': 'AajTak.xlsx',
+            'IndiaTv': 'IndiaTv.xlsx',
+            'HindustanTime': 'HindustanTime_Chandigarh.xlsx',
+            'JagranChandigarh': 'Jagran_Punjab.xlsx',
+            'BhaskarChandigarh': 'Bhaskar_Chandigarh.xlsx',
+            'TribuneChandigarh': 'Tribune_Chandigarh.xlsx',
+        }
+        
+        # Check both the mapped filename and generic fallbacks
+        output_filename = OUTPUT_FILE_MAP.get(crawler_file_name, f'{crawler_file_name}.xlsx')
+        alt_files = [
+            f'data/raw/{output_filename}',
+            f'data/raw/{crawler_file_name}.xlsx',
+            f'data/raw/{function_name}.xlsx',
+        ]
+        
+        crawler_file_found = None
+        for alt_file in alt_files:
+            if os.path.exists(alt_file):
+                crawler_file_found = alt_file
+                break
+        
+        if crawler_file_found:
+            df_crawler = pd.read_excel(crawler_file_found)
+            taken = 0
+            
+            for idx, crawler_row in df_crawler.iterrows():
+                if taken >= max_items:
+                    break
+                
+                heading = str(crawler_row.get('Heading', '')).strip()
+                body = str(crawler_row.get('Body', '')).strip()
+                url = str(crawler_row.get('URL', '')).strip()
+                
+                # Skip empty entries
+                if not heading or not body or not url:
+                    continue
+                
+                # Write to main worksheet
+                ws.write_row(row, 0, [
+                    source_name,
+                    heading,
+                    body,
+                    url,
+                    '',  # Published date not available from crawler
+                    ''   # Image URL not available from crawler
+                ])
+                row += 1
+                taken += 1
+            
+            print(f"[CRAWLER] {crawler_file_name}: Added {taken} articles")
+        else:
+            print(f"[WARNING] {crawler_file_name}: Output file not found (checked: {', '.join(alt_files)})")
+    except Exception as e:
+        print(f"[ERROR] Failed to process {crawler_file_name}: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    return row
+
+
+def _archive_old_data():
+    """
+    Archive old data from 'data' folder to 'data1' folder with timestamp.
+    This ensures old data is preserved and new data starts fresh.
+    """
+    data_dir = 'data'
+    data1_dir = 'data1'
+    
+    # Check if data directory exists and has content
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir, exist_ok=True)
+        return
+    
+    # Create data1 directory if it doesn't exist
+    os.makedirs(data1_dir, exist_ok=True)
+    
+    # Create timestamped archive folder
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    archive_dir = os.path.join(data1_dir, f'archive_{timestamp}')
+    os.makedirs(archive_dir, exist_ok=True)
+    
+    # Archive all files and subdirectories from data folder
+    if os.path.exists(data_dir):
+        try:
+            # Archive raw folder if it exists
+            raw_source = os.path.join(data_dir, 'raw')
+            if os.path.exists(raw_source):
+                raw_dest = os.path.join(archive_dir, 'raw')
+                shutil.copytree(raw_source, raw_dest, dirs_exist_ok=True)
+                print(f"[ARCHIVE] Archived raw/ folder to data1/archive_{timestamp}/raw/")
+            
+            # Archive rss folder if it exists
+            rss_source = os.path.join(data_dir, 'rss')
+            if os.path.exists(rss_source):
+                rss_dest = os.path.join(archive_dir, 'rss')
+                shutil.copytree(rss_source, rss_dest, dirs_exist_ok=True)
+                print(f"[ARCHIVE] Archived rss/ folder to data1/archive_{timestamp}/rss/")
+            
+            # Archive processed folder if it exists
+            processed_source = os.path.join(data_dir, 'processed')
+            if os.path.exists(processed_source):
+                processed_dest = os.path.join(archive_dir, 'processed')
+                shutil.copytree(processed_source, processed_dest, dirs_exist_ok=True)
+                print(f"[ARCHIVE] Archived processed/ folder to data1/archive_{timestamp}/processed/")
+            
+            # Archive embeddings folder if it exists
+            embeddings_source = os.path.join(data_dir, 'embeddings')
+            if os.path.exists(embeddings_source):
+                embeddings_dest = os.path.join(archive_dir, 'embeddings')
+                shutil.copytree(embeddings_source, embeddings_dest, dirs_exist_ok=True)
+                print(f"[ARCHIVE] Archived embeddings/ folder to data1/archive_{timestamp}/embeddings/")
+            
+            # Archive results folder if it exists
+            results_source = os.path.join(data_dir, 'results')
+            if os.path.exists(results_source):
+                results_dest = os.path.join(archive_dir, 'results')
+                shutil.copytree(results_source, results_dest, dirs_exist_ok=True)
+                print(f"[ARCHIVE] Archived results/ folder to data1/archive_{timestamp}/results/")
+            
+            # Archive any loose files in data directory
+            for item in os.listdir(data_dir):
+                item_path = os.path.join(data_dir, item)
+                if os.path.isfile(item_path):
+                    shutil.copy2(item_path, archive_dir)
+                    print(f"[ARCHIVE] Archived {item} to data1/archive_{timestamp}/")
+            
+            # Clean up data directory (remove old files, keep structure)
+            print(f"[ARCHIVE] Cleaning up data/ folder for fresh data collection...")
+            try:
+                if os.path.exists(raw_source):
+                    shutil.rmtree(raw_source)
+                    print(f"[ARCHIVE] Removed old data/raw/ folder")
+            except Exception as e:
+                print(f"[WARNING] Could not remove data/raw/: {e}")
+            
+            try:
+                if os.path.exists(rss_source):
+                    shutil.rmtree(rss_source)
+                    print(f"[ARCHIVE] Removed old data/rss/ folder")
+            except Exception as e:
+                print(f"[WARNING] Could not remove data/rss/: {e}")
+            
+            try:
+                if os.path.exists(processed_source):
+                    shutil.rmtree(processed_source)
+                    print(f"[ARCHIVE] Removed old data/processed/ folder")
+            except Exception as e:
+                print(f"[WARNING] Could not remove data/processed/: {e}")
+            
+            try:
+                if os.path.exists(embeddings_source):
+                    shutil.rmtree(embeddings_source)
+                    print(f"[ARCHIVE] Removed old data/embeddings/ folder")
+            except Exception as e:
+                print(f"[WARNING] Could not remove data/embeddings/: {e}")
+            
+            try:
+                if os.path.exists(results_source):
+                    shutil.rmtree(results_source)
+                    print(f"[ARCHIVE] Removed old data/results/ folder")
+            except Exception as e:
+                print(f"[WARNING] Could not remove data/results/: {e}")
+            
+            # Remove loose files
+            try:
+                for item in os.listdir(data_dir):
+                    item_path = os.path.join(data_dir, item)
+                    if os.path.isfile(item_path):
+                        os.remove(item_path)
+                        print(f"[ARCHIVE] Removed {item}")
+            except Exception as e:
+                print(f"[WARNING] Could not remove loose files: {e}")
+            
+            print(f"[ARCHIVE] ✓ Old data archived to: data1/archive_{timestamp}/")
+            print(f"[ARCHIVE] ✓ data/ folder cleaned and ready for new data")
+        except Exception as e:
+            print(f"[WARNING] Error archiving old data: {e}")
+            print(f"[WARNING] Continuing with new data collection...")
+
+
+def fetch_and_process(max_items=50, output_file='RSS_FullText.xlsx'):
+    """
+    Fetch articles from both RSS feeds AND crawlers simultaneously.
+    
+    Args:
+        max_items: Maximum articles per feed/crawler (default: 50)
         output_file: Output Excel filename
         
     Saves:
         Excel file with columns: Source, Title, FullArticle, Link,
         Published, ImageURL
     """
-    # Save to organized data structure
+    # Archive old data to data1 before processing new data
+    print("\n" + "=" * 60)
+    print("ARCHIVING OLD DATA")
+    print("=" * 60)
+    _archive_old_data()
+    
+    # Save to organized data structure (always use 'data' folder)
     rss_dir = 'data/rss'
     os.makedirs(rss_dir, exist_ok=True)
     output_path = os.path.join(rss_dir, output_file)
-    wb = xlsxwriter.Workbook(output_path)
+    wb = xlsxwriter.Workbook(output_path, {'nan_inf_to_errors': False})
     ws = wb.add_worksheet()
     ws.write_row(0, 0, [
         'Source', 'Title', 'FullArticle', 'Link', 'Published', 'ImageURL'
     ])
     row = 1
     
-    # Process each RSS feed
+    # Mapping of crawler file names to (function_name, source_name) tuples
+    # Format: 'filename': ('function_name', 'output_source_name')
+    CRAWLER_SOURCES = {
+        'News18': ('News18', 'News18_Crawler'),
+        'News18Punj': ('News18Punj', 'News18Punj_Crawler'),
+        'IndiaToday': ('IndiaToday', 'IndiaToday_Crawler'),
+        'IndiaToday_Chandigarh': ('IndiaToday_Chandigarh', 'IndiaToday_Chandigarh_Crawler'),
+        'AajTak': ('AajTak', 'AajTak_Crawler'),
+        'IndiaTv': ('IndiaTv', 'IndiaTv_Crawler'),
+        'HindustanTime': ('Hindustan', 'HindustanTime_Crawler'),
+        'JagranChandigarh': ('JagranChandigarh', 'JagranChandigarh_Crawler'),
+        'BhaskarChandigarh': ('Bhaskar', 'BhaskarChandigarh_Crawler'),
+        'TribuneChandigarh': ('Tribune', 'TribuneChandigarh_Crawler'),
+    }
+    
+    # ========================================================================
+    # STEP 1: Process RSS Feeds
+    # ========================================================================
+    print("=" * 60)
+    print("STEP 1: Processing RSS Feeds")
+    print("=" * 60)
+    
     for source, url in RSS_FEEDS.items():
         print(f"[RSS] Processing {source}...")
         feed = feedparser.parse(url)
         if not feed.entries:
             print(f"[WARNING] {source}: Feed has no entries!")
             continue
+        
         print(f"[RSS] {source}: Found {len(feed.entries)} entries")
         taken = 0
         skipped_videos = 0
@@ -481,8 +777,43 @@ def fetch_and_process(max_items=50, output_file='RSS_FullText.xlsx'):
         print(f"[RSS] {source}: Scraped {taken} articles, "
               f"Skipped {skipped_videos} videos")
     
+    rss_total = row - 1
+    print(f"[RSS] Total RSS articles saved: {rss_total}")
+    
+    # ========================================================================
+    # STEP 2: Process Crawlers (with timeout to prevent hanging)
+    # ========================================================================
+    print("\n" + "=" * 60)
+    print("STEP 2: Processing Web Crawlers")
+    print("=" * 60)
+    print("[NOTE] Crawlers may take several minutes. Each crawler visits multiple URLs.")
+    
+    for crawler_file_name, (function_name, source_name) in CRAWLER_SOURCES.items():
+        print(f"\n[CRAWLER] Processing {crawler_file_name}...")
+        try:
+            # Set timeout to 5 minutes per crawler (300 seconds)
+            row = _process_crawler_data(crawler_file_name, function_name, source_name, ws, row, max_items, timeout=300)
+        except TimeoutError as e:
+            print(f"[ERROR] {e}")
+            print(f"[SKIP] Skipping {crawler_file_name} due to timeout")
+            continue
+        except Exception as e:
+            print(f"[ERROR] Failed to process {crawler_file_name}: {e}")
+            continue
+    
+    crawler_total = row - 1 - rss_total
+    print(f"\n[CRAWLER] Total crawler articles saved: {crawler_total}")
+    
+    # ========================================================================
+    # Final Summary
+    # ========================================================================
     wb.close()
-    print(f"[RSS] Total articles saved: {row-1}")
+    total_articles = row - 1
+    print("\n" + "=" * 60)
+    print(f"SUMMARY: Total articles from all sources: {total_articles}")
+    print(f"  - RSS Feeds: {rss_total} articles")
+    print(f"  - Web Crawlers: {crawler_total} articles")
+    print("=" * 60)
 
 
 def _process_news_data(language='en'):
@@ -523,112 +854,149 @@ def _process_news_data(language='en'):
     news = []
     negative_news = []
     output_rows = []
+    total_articles = len(df)
+    
+    print(f"\nProcessing {total_articles} articles for sentiment analysis and categorization...")
+    print("This may take 2-5 minutes. Progress will be shown every 10 articles.")
     
     for idx, row in df.iterrows():
-        raw = row['FullArticle'] or ''
-        clean = preprocess(raw)
-        cat_id = predict_category(clean)
-        cat_name = _categories[cat_id]
-        sent = predict_sentiment(clean)
-        emo = predict_emotion(clean)
-        dept = DEPARTMENT_MAPPING.get(cat_id, {}).get('name', '')
+        # Show progress every 10 articles
+        if (idx + 1) % 10 == 0:
+            print(f"  ✓ Processed {idx + 1}/{total_articles} articles...")
         
-        # Check for negative sentiment (>95%)
-        if sent[1] > 0.95:
-            negative_news.append({
-                'title': row['Title'],
-                'url': row['Link'],
-                'category': cat_name,
-                'sentiment': sent,
-                'published': row['Published'],
-                'source': row['Source'],
-                'description': (raw[:1000] + '...'
-                              if len(raw) > 1000 else raw)
-            })
-        
-        # Extract image URL
-        image_url = ''
         try:
-            if 'ImageURL' in row and pd.notna(row['ImageURL']):
-                image_url = str(row['ImageURL'])
-            if not image_url or image_url == 'nan':
-                art = Article(row['Link'])
-                art.download()
-                art.parse()
-                image_url = art.top_image or ''
-        except Exception:
+            raw = row['FullArticle'] or ''
+            if not raw or len(raw.strip()) < 50:
+                # Skip articles with very little content
+                continue
+                
+            clean = preprocess(raw)
+            cat_id = predict_category(clean)
+            cat_name = _categories[cat_id]
+            sent = predict_sentiment(clean)
+            emo = predict_emotion(clean)
+            dept = DEPARTMENT_MAPPING.get(cat_id, {}).get('name', '')
+            
+            # Check for negative sentiment (>95%)
+            # Use sanitized sentiment for check
+            sent_safe_check = [
+                0.0 if (math.isnan(x) or math.isinf(x)) else float(x)
+                for x in sent
+            ]
+            if sent_safe_check[1] > 0.95:
+                negative_news.append({
+                    'title': str(row['Title']) if pd.notna(row['Title']) else '',
+                    'url': str(row['Link']) if pd.notna(row['Link']) else '',
+                    'category': str(cat_name) if cat_name else '',
+                    'sentiment': sent_safe_check,
+                    'published': str(row['Published']) if pd.notna(row['Published']) else '',
+                    'source': str(row['Source']) if pd.notna(row['Source']) else '',
+                    'description': (str(raw)[:1000] + '...'
+                                  if len(str(raw)) > 1000 else str(raw))
+                })
+            
+            # Extract image URL - use existing, skip slow downloads
             image_url = ''
-        
-        # Prepare news item
-        news_item = {
-            'Source': row['Source'],
-            'Title': row['Title'],
-            'FullArticle': raw,
-            'URL': row['Link'],
-            'Published': row['Published'],
-            'Category': cat_name,
-            'Sentiment': sent,
-            'Emotion': emo,
-            'Department': dept,
-            'ImageURL': image_url,
-        }
-        
-        # Translate if Hindi requested
-        if language == 'hi':
             try:
-                translated_title = translate_text(
-                    str(row['Title']), 'hi', max_length=200
-                )
-                news_item['TitleHindi'] = (
-                    translated_title if translated_title and
-                    translated_title.strip() else ''
-                )
-                
-                description = (str(raw)[:200] + '...'
-                             if len(str(raw)) > 200 else str(raw))
-                translated_desc = translate_text(
-                    description, 'hi', max_length=200
-                )
-                news_item['DescriptionHindi'] = (
-                    translated_desc if translated_desc and
-                    translated_desc.strip() else ''
-                )
-                news_item['FullArticleHindi'] = ''
-                
-                if (idx + 1) % 10 == 0:
-                    print(f"Translated {idx + 1}/{len(df)} items...")
-            except Exception as e:
-                print(f"Error translating news item "
-                      f"{row['Title'][:50]}: {e}")
+                if 'ImageURL' in row and pd.notna(row['ImageURL']):
+                    img_val = str(row['ImageURL']).strip()
+                    if img_val and img_val != 'nan' and img_val != '':
+                        image_url = img_val
+            except Exception:
+                image_url = ''
+            # NOTE: Removed slow Article() download/parse to speed up processing
+            
+            # Sanitize sentiment scores (replace NaN/INF with 0.0)
+            sent_safe = [
+                0.0 if (math.isnan(x) or math.isinf(x)) else float(x)
+                for x in sent
+            ]
+            
+            # Prepare news item
+            news_item = {
+                'Source': str(row['Source']) if pd.notna(row['Source']) else '',
+                'Title': str(row['Title']) if pd.notna(row['Title']) else '',
+                'FullArticle': str(raw) if raw else '',
+                'URL': str(row['Link']) if pd.notna(row['Link']) else '',
+                'Published': str(row['Published']) if pd.notna(row['Published']) else '',
+                'Category': str(cat_name) if cat_name else '',
+                'Sentiment': sent_safe,  # Use sanitized sentiment
+                'Emotion': str(emo) if emo else '',
+                'Department': str(dept) if dept else '',
+                'ImageURL': str(image_url) if image_url else '',
+            }
+            
+            # Sanitize entire news_item for JSON safety
+            news_item = sanitize_for_json(news_item)
+            
+            # Translate if Hindi requested
+            if language == 'hi':
+                try:
+                    translated_title = translate_text(
+                        str(row['Title']), 'hi', max_length=200
+                    )
+                    news_item['TitleHindi'] = (
+                        translated_title if translated_title and
+                        translated_title.strip() else ''
+                    )
+                    
+                    description = (str(raw)[:200] + '...'
+                                 if len(str(raw)) > 200 else str(raw))
+                    translated_desc = translate_text(
+                        description, 'hi', max_length=200
+                    )
+                    news_item['DescriptionHindi'] = (
+                        translated_desc if translated_desc and
+                        translated_desc.strip() else ''
+                    )
+                    news_item['FullArticleHindi'] = ''
+                    
+                    if (idx + 1) % 10 == 0:
+                        print(f"Translated {idx + 1}/{len(df)} items...")
+                except Exception as e:
+                    print(f"Error translating news item "
+                          f"{row['Title'][:50]}: {e}")
+                    news_item['TitleHindi'] = ''
+                    news_item['DescriptionHindi'] = ''
+                    news_item['FullArticleHindi'] = ''
+            else:
                 news_item['TitleHindi'] = ''
                 news_item['DescriptionHindi'] = ''
                 news_item['FullArticleHindi'] = ''
-        else:
-            news_item['TitleHindi'] = ''
-            news_item['DescriptionHindi'] = ''
-            news_item['FullArticleHindi'] = ''
-        
-        news.append(news_item)
-        
-        # Prepare Excel output row
-        output_rows.append([
-            row['Source'],
-            row['Title'],
-            raw,
-            row['Link'],
-            row['Published'],
-            (f"Positive={sent[0]:.2f}, Negative={sent[1]:.2f}, "
-             f"Neutral={sent[2]:.2f}"),
-            cat_name,
-            emo,
-            dept
-        ])
+            
+            news.append(news_item)
+            
+            # Sanitize sentiment scores for Excel (handle NaN/INF)
+            sent_safe = [
+                0.0 if (math.isnan(x) or math.isinf(x)) else x 
+                for x in sent
+            ]
+            
+            # Prepare Excel output row (convert all to strings to avoid NaN issues)
+            output_rows.append([
+                str(row['Source']) if pd.notna(row['Source']) else '',
+                str(row['Title']) if pd.notna(row['Title']) else '',
+                str(raw) if raw else '',
+                str(row['Link']) if pd.notna(row['Link']) else '',
+                str(row['Published']) if pd.notna(row['Published']) else '',
+                (f"Positive={sent_safe[0]:.2f}, Negative={sent_safe[1]:.2f}, "
+                 f"Neutral={sent_safe[2]:.2f}"),
+                str(cat_name) if cat_name else '',
+                str(emo) if emo else '',
+                str(dept) if dept else ''
+            ])
+        except Exception as e:
+            # Skip articles that fail processing, log error
+            print(f"  ⚠ Error processing article {idx + 1} ({row.get('Title', 'Unknown')[:50]}): {str(e)[:100]}")
+            continue
+    
+    print(f"\n✓ Finished processing: {len(news)} articles successfully processed out of {total_articles}")
     
     # Write processed data to Excel in organized data structure
     rss_dir = 'data/rss'
     os.makedirs(rss_dir, exist_ok=True)
     output_file = os.path.join(rss_dir, 'RSS_Processed.xlsx')
-    wb = xlsxwriter.Workbook(output_file)
+    wb = xlsxwriter.Workbook(output_file, {'nan_inf_to_errors': False})
     ws = wb.add_worksheet()
     ws.write_row(0, 0, [
         'Source', 'Title', 'FullArticle', 'Link', 'Published',
@@ -779,11 +1147,14 @@ class NewsListView(CsrfExemptMixin, View):
                     json_dumps_params={'ensure_ascii': False}
                 )
             
+            # Final sanitization of news list before JSON serialization
+            news_sanitized = sanitize_for_json(news)
+            
             return JsonResponse(
                 {
                     'result': 'success',
-                    'news': news,
-                    'total': len(news)
+                    'news': news_sanitized,
+                    'total': len(news_sanitized)
                 },
                 safe=False,
                 json_dumps_params={'ensure_ascii': False}
@@ -875,11 +1246,12 @@ class NewsFilterView(CsrfExemptMixin, View):
                 )
             else:
                 # No category filter, return all news
+                news_sanitized = sanitize_for_json(news)
                 return JsonResponse(
                     {
                         'result': 'success',
-                        'news': news,
-                        'total': len(news)
+                        'news': news_sanitized,
+                        'total': len(news_sanitized)
                     },
                     safe=False,
                     json_dumps_params={'ensure_ascii': False}
@@ -1027,16 +1399,21 @@ def index(request):
         dept = DEPARTMENT_MAPPING.get(cat_id, {}).get('name', '')
         
         # Check for negative sentiment (>95%)
-        if sent[1] > 0.95:
+        # Use sanitized sentiment for check
+        sent_safe_check = [
+            0.0 if (math.isnan(x) or math.isinf(x)) else float(x)
+            for x in sent
+        ]
+        if sent_safe_check[1] > 0.95:
             negative_news.append({
-                'title': row['Title'],
-                'url': row['Link'],
-                'category': cat_name,
-                'sentiment': sent,
-                'published': row['Published'],
-                'source': row['Source'],
-                'description': (raw[:1000] + '...'
-                              if len(raw) > 1000 else raw)
+                'title': str(row['Title']) if pd.notna(row['Title']) else '',
+                'url': str(row['Link']) if pd.notna(row['Link']) else '',
+                'category': str(cat_name) if cat_name else '',
+                'sentiment': sent_safe_check,
+                'published': str(row['Published']) if pd.notna(row['Published']) else '',
+                'source': str(row['Source']) if pd.notna(row['Source']) else '',
+                'description': (str(raw)[:1000] + '...'
+                              if len(str(raw)) > 1000 else str(raw))
             })
         
         # Extract image URL
@@ -1052,19 +1429,28 @@ def index(request):
         except Exception:
             image_url = ''
         
+        # Sanitize sentiment scores (replace NaN/INF with 0.0)
+        sent_safe = [
+            0.0 if (math.isnan(x) or math.isinf(x)) else float(x)
+            for x in sent
+        ]
+        
         # Prepare news item
         news_item = {
-            'Source': row['Source'],
-            'Title': row['Title'],
-            'FullArticle': raw,
-            'URL': row['Link'],
-            'Published': row['Published'],
-            'Category': cat_name,
-            'Sentiment': sent,
-            'Emotion': emo,
-            'Department': dept,
-            'ImageURL': image_url,
+            'Source': str(row['Source']) if pd.notna(row['Source']) else '',
+            'Title': str(row['Title']) if pd.notna(row['Title']) else '',
+            'FullArticle': str(raw) if raw else '',
+            'URL': str(row['Link']) if pd.notna(row['Link']) else '',
+            'Published': str(row['Published']) if pd.notna(row['Published']) else '',
+            'Category': str(cat_name) if cat_name else '',
+            'Sentiment': sent_safe,  # Use sanitized sentiment
+            'Emotion': str(emo) if emo else '',
+            'Department': str(dept) if dept else '',
+            'ImageURL': str(image_url) if image_url else '',
         }
+        
+        # Sanitize entire news_item for JSON safety
+        news_item = sanitize_for_json(news_item)
         
         # Translate if Hindi requested
         if language == 'hi':
@@ -1106,25 +1492,31 @@ def index(request):
         
         news.append(news_item)
         
-        # Prepare Excel output row
+        # Sanitize sentiment scores for Excel (handle NaN/INF)
+        sent_safe = [
+            0.0 if (math.isnan(x) or math.isinf(x)) else x 
+            for x in sent
+        ]
+        
+        # Prepare Excel output row (convert all to strings to avoid NaN issues)
         output_rows.append([
-            row['Source'],
-            row['Title'],
-            raw,
-            row['Link'],
-            row['Published'],
-            (f"Positive={sent[0]:.2f}, Negative={sent[1]:.2f}, "
-             f"Neutral={sent[2]:.2f}"),
-            cat_name,
-            emo,
-            dept
+            str(row['Source']) if pd.notna(row['Source']) else '',
+            str(row['Title']) if pd.notna(row['Title']) else '',
+            str(raw) if raw else '',
+            str(row['Link']) if pd.notna(row['Link']) else '',
+            str(row['Published']) if pd.notna(row['Published']) else '',
+            (f"Positive={sent_safe[0]:.2f}, Negative={sent_safe[1]:.2f}, "
+             f"Neutral={sent_safe[2]:.2f}"),
+            str(cat_name) if cat_name else '',
+            str(emo) if emo else '',
+            str(dept) if dept else ''
         ])
     
     # Write processed data to Excel in organized data structure
     rss_dir = 'data/rss'
     os.makedirs(rss_dir, exist_ok=True)
     output_file = os.path.join(rss_dir, 'RSS_Processed.xlsx')
-    wb = xlsxwriter.Workbook(output_file)
+    wb = xlsxwriter.Workbook(output_file, {'nan_inf_to_errors': False})
     ws = wb.add_worksheet()
     ws.write_row(0, 0, [
         'Source', 'Title', 'FullArticle', 'Link', 'Published',
@@ -1298,11 +1690,12 @@ def index(request):
             else:
                 print("No category filter provided in POST request, "
                       "returning all news")
+                news_sanitized = sanitize_for_json(news)
                 return JsonResponse(
                     {
                         'result': 'success',
-                        'news': news,
-                        'total': len(news)
+                        'news': news_sanitized,
+                        'total': len(news_sanitized)
                     },
                     safe=False,
                     json_dumps_params={'ensure_ascii': False}
@@ -1322,12 +1715,13 @@ def index(request):
         except Exception as e:
             print(f"ERROR filtering by category: {e}")
             traceback.print_exc()
+            news_sanitized = sanitize_for_json(news)
             return JsonResponse(
                 {
                     'result': 'error',
                     'message': str(e),
-                    'news': news,
-                    'total': len(news)
+                    'news': news_sanitized,
+                    'total': len(news_sanitized)
                 },
                 safe=False,
                 json_dumps_params={'ensure_ascii': False}
@@ -1335,11 +1729,12 @@ def index(request):
     
     # Default GET request returns all news
     print(f"GET request: Returning all {len(news)} news items")
+    news_sanitized = sanitize_for_json(news)
     return JsonResponse(
         {
             'result': 'success',
-            'news': news,
-            'total': len(news)
+            'news': news_sanitized,
+            'total': len(news_sanitized)
         },
         safe=False,
         json_dumps_params={'ensure_ascii': False}

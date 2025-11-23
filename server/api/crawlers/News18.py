@@ -42,8 +42,7 @@ def News18():
 
         while(urls_to_visit and count<20):
                 urltoVisit=urls_to_visit[0]
-                print(count)
-                print(urltoVisit)
+                # Debug: print(f"Processing URL {count+1}/20: {urltoVisit}")
                 urls_to_visit.pop(0)
                 if(urltoVisit[0]=='h' and (["tags","tag", "livetv", "videos", "web-stories", "astrology"] not in urltoVisit.split("/"))):
                     try:
@@ -64,26 +63,48 @@ def News18():
                                 finally:
                                     continue
                             
-                            if(soup.find('h1', {'class':'article_heading1'}) and (soup.find('html',{'lang':'en'}) or soup.find('html',{'lang':'en-us'})or soup.find('html',{'lang':'en-uk'}))):
-                                heading_title=soup.find('h1', {'class':'article_heading1'})
-                                
-                        
-                                
-                                if(soup.find('div', {'id':'article_ContentWrap'}).findAll('p')):
-                                
+                            # Find article heading - use any h1 tag (most reliable)
+                            heading_title = soup.find('h1')
+                            
+                            # Find article content - look for article tag or any div with multiple paragraphs
+                            content_div = None
+                            article_tag = soup.find('article')
+                            if article_tag:
+                                content_div = article_tag
+                            else:
+                                # Find div with most paragraphs (likely article content)
+                                all_divs = soup.findAll('div')
+                                max_paragraphs = 0
+                                for div in all_divs:
+                                    paragraphs = div.findAll('p')
+                                    if len(paragraphs) > max_paragraphs and len(paragraphs) >= 3:
+                                        max_paragraphs = len(paragraphs)
+                                        content_div = div
+                            
+                            # Check if we found a valid article page
+                            if heading_title and content_div:
+                                # Extract paragraphs from content
+                                paragraphs = content_div.findAll('p')
+                                # Only accept if we have at least 3 paragraphs (likely an article)
+                                if len(paragraphs) >= 3:
+                                    news = ""
+                                    for text in paragraphs:
+                                        text_content = text.text.strip()
+                                        if text_content and len(text_content) > 20:  # Skip very short paragraphs
+                                            news += text_content + " "
                                     
-                                    heading_desc=soup.find('div', {'id':'article_ContentWrap'}).findAll('p')
-                                    news=""
-                                    for text in heading_desc:
-                                        news+=text.text
-                                    worksheet.write(row,column,heading_title.text)
-                                    worksheet.write(row,column+1,news)
-                                    worksheet.write(row,column+2,urltoVisit.split("/")[3])
-                                    worksheet.write(row,column+3,urltoVisit)
-                                
-                                    row+=1
-                                    
-                                    count+=1
+                                    # Only save if we have substantial content
+                                    if len(news.strip()) > 100:
+                                        heading_text = heading_title.text.strip()
+                                        if heading_text and len(heading_text) > 10:
+                                            worksheet.write(row, column, heading_text)
+                                            worksheet.write(row, column+1, news.strip())
+                                            worksheet.write(row, column+2, urltoVisit.split("/")[3] if len(urltoVisit.split("/")) > 3 else "news")
+                                            worksheet.write(row, column+3, urltoVisit)
+                                            
+                                            row += 1
+                                            count += 1
+                                            print(f"  ✓ Found article {count}: {heading_text[:50]}...")
                     finally:
                         continue        
             

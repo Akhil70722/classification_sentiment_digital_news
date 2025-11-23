@@ -38,13 +38,11 @@ def IndiaToday():
                     continue
         while(urls_to_visit and count<20):
                 urltoVisit=urls_to_visit[0]
-                print(urltoVisit)
-                print(count)
                 urls_to_visit.pop(0)
             
                 if(urltoVisit[0]=='h' and (["tags","tag", "livetv", "video"] not in urltoVisit.split("/"))):
                     try:
-                        r=requests.get(urltoVisit, headers=HEADERS)
+                        r=requests.get(urltoVisit, headers=HEADERS, timeout=10)
                         if(r.status_code==200):
                             soup=BeautifulSoup(r.text, 'html.parser')
                         
@@ -61,31 +59,47 @@ def IndiaToday():
                                 finally:
                                     continue
                             
-                            if(soup.find('h1', {'class':'Story_strytitle__MYXmR'}) and (soup.find('html',{'lang':'en'}) or soup.find('html',{'lang':'en-us'})or soup.find('html',{'lang':'en-uk'}))):
-                                heading_title=soup.find('h1', {'class':'Story_strytitle__MYXmR'})
-                                print("Yes")
-                                if(soup.find('div', {'class':'Story_description__fq_4S'})):
-                                    print("Yes")
+                            # Find article heading - use any h1 tag
+                            heading_title = soup.find('h1')
+                            
+                            # Find article content - look for article tag or div with most paragraphs
+                            content_div = None
+                            article_tag = soup.find('article')
+                            if article_tag:
+                                content_div = article_tag
+                            else:
+                                all_divs = soup.findAll('div')
+                                max_paragraphs = 0
+                                for div in all_divs:
+                                    paragraphs = div.findAll('p')
+                                    if len(paragraphs) > max_paragraphs and len(paragraphs) >= 3:
+                                        max_paragraphs = len(paragraphs)
+                                        content_div = div
+                            
+                            if heading_title and content_div:
+                                paragraphs = content_div.findAll('p')
+                                if len(paragraphs) >= 3:
+                                    news = ""
+                                    for text in paragraphs:
+                                        text_content = text.text.strip()
+                                        if text_content and len(text_content) > 20:
+                                            news += text_content + " "
                                     
-                                    
-                                    heading_desc=soup.find('div', {'class':'Story_description__fq_4S'}).findAll('p')
-                                
-                                    news=""
-                                    for text in heading_desc:
+                                    if len(news.strip()) > 100:
+                                        heading_text = heading_title.text.strip()
+                                        if heading_text and len(heading_text) > 10:
+                                            category = urltoVisit.split("/")[3] if len(urltoVisit.split("/")) > 3 and urltoVisit.split("/")[3] != 'cities' else "india"
+                                            
+                                            worksheet.write(row, column, heading_text)
+                                            worksheet.write(row, column+1, news.strip())
+                                            worksheet.write(row, column+2, category)
+                                            worksheet.write(row, column+3, urltoVisit)
                                         
-                                        news+=text.text
-                        
-                                    worksheet.write(row,column,heading_title.text)
-                                    worksheet.write(row,column+1,news)
-                                    if(urltoVisit.split("/")[3]!='cities'):
-                                        worksheet.write(row,column+2,urltoVisit.split("/")[3])
-                                    else:
-                                        worksheet.write(row,column+2,"india")
-                                    worksheet.write(row,column+3,urltoVisit)
-                                
-                                    row+=1
-                                    
-                                    count+=1
+                                            row += 1
+                                            count += 1
+                                            print(f"  ✓ Found article {count}: {heading_text[:50]}...")
+                    except Exception as e:
+                        continue
                     finally:
                         continue        
             

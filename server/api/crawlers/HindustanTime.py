@@ -38,13 +38,11 @@ def Hindustan():
                     continue
         while(urls_to_visit and count<20):
                 urltoVisit=urls_to_visit[0]
-                print(urltoVisit)
-                print(count)
                 urls_to_visit.pop(0)
             
                 if(urltoVisit[0]=='h' and (["tags","tag", "livetv", "video"] not in urltoVisit.split("/"))):
                     try:
-                        r=requests.get(urltoVisit, headers=HEADERS)
+                        r=requests.get(urltoVisit, headers=HEADERS, timeout=10)
                         if(r.status_code==200):
                             soup=BeautifulSoup(r.text, 'html.parser')
                             for url in soup.findAll('a'):
@@ -60,30 +58,57 @@ def Hindustan():
                                 finally:
                                     continue
                             
-                            if(soup.find('h1', {'class':'hdg1'}) and (soup.find('html',{'lang':'en'}) or soup.find('html',{'lang':'en-us'}) or soup.find('html',{'lang':'en-uk'}))):
-                                heading_title=soup.find('h1', {'class':'hdg1'})
-                                print("Yes")
-                                if(soup.find('div', {'class':'detail'}).findAll('p')):
-                                    print("Yes")
+                            # Find article heading - use any h1 tag
+                            heading_title = soup.find('h1')
+                            
+                            # Find article content - look for article tag or div with most paragraphs
+                            content_div = None
+                            article_tag = soup.find('article')
+                            if article_tag:
+                                content_div = article_tag
+                            else:
+                                all_divs = soup.findAll('div')
+                                max_paragraphs = 0
+                                for div in all_divs:
+                                    paragraphs = div.findAll('p')
+                                    if len(paragraphs) > max_paragraphs and len(paragraphs) >= 3:
+                                        max_paragraphs = len(paragraphs)
+                                        content_div = div
+                            
+                            if heading_title and content_div:
+                                paragraphs = content_div.findAll('p')
+                                if len(paragraphs) >= 3:
+                                    news = ""
+                                    for text in paragraphs:
+                                        text_content = text.text.strip()
+                                        if text_content and len(text_content) > 20:
+                                            news += text_content + " "
                                     
-                                    
-                                    heading_desc=soup.find('div', {'class':'detail'}).findAll('p')
-                                    news=""
-                                    for text in heading_desc:
+                                    if len(news.strip()) > 100:
+                                        heading_text = heading_title.text.strip()
+                                        if heading_text and len(heading_text) > 10:
+                                            # Try to get date
+                                            updated = ""
+                                            date_selectors = [
+                                                soup.find('div', {'class':'dateTime'}),
+                                                soup.find('time'),
+                                                soup.find('span', {'class':'date'}),
+                                            ]
+                                            for selector in date_selectors:
+                                                if selector:
+                                                    updated = selector.text.strip()
+                                                    break
+                                            
+                                            worksheet.write(row, column, heading_text)
+                                            worksheet.write(row, column+1, news.strip())
+                                            worksheet.write(row, column+2, updated)
+                                            worksheet.write(row, column+3, urltoVisit)
                                         
-                                        news+=text.text
-                                        
-                                    updated=soup.find('div',{'class':'dateTime'}).text
-                                    print(updated)
-                        
-                                    worksheet.write(row,column,heading_title.text)
-                                    worksheet.write(row,column+1,news)
-                                    worksheet.write(row,column+2,updated)
-                                    worksheet.write(row,column+3,urltoVisit)
-                                
-                                    row+=1
-                                    
-                                    count+=1
+                                            row += 1
+                                            count += 1
+                                            print(f"  ✓ Found article {count}: {heading_text[:50]}...")
+                    except Exception as e:
+                        continue
                     finally:
                         continue        
             
